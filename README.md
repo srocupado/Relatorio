@@ -64,6 +64,28 @@ python -m http.server 8000
    deputado por legislatura) e `Projetos` (um projeto por linha).
 6. **Importar Excel** — recarrega um arquivo exportado anteriormente para filtrar/ordenar
    **sem refazer o processamento**.
+7. **Exportar SQLite (.db)** — gera um **banco de dados local** (SQLite) com as tabelas
+   `ranking` e `projetos`. Não precisa instalar nada nem ser administrador: o arquivo `.db`
+   pode ser aberto no Python (módulo `sqlite3`, já embutido), no
+   [DB Browser for SQLite](https://sqlitebrowser.org/), Power BI, etc.
+8. **Importar SQLite** — recarrega um `.db` exportado antes, repovoando a interface **sem
+   reprocessar os arquivos**.
+
+### Usando o banco no Python
+
+```python
+import sqlite3
+con = sqlite3.connect("deputados-projetos-em-lei-2026-06-22.db")
+cur = con.cursor()
+for nome, partido, uf, qtd in cur.execute(
+    "SELECT deputado, partido, uf, projetos_em_lei FROM ranking "
+    "WHERE legislatura='57' ORDER BY projetos_em_lei DESC LIMIT 10"):
+    print(qtd, nome, partido, uf)
+```
+
+Tabelas: `ranking` (id_deputado, deputado, partido, uf, legislatura, legislatura_desc,
+projetos_em_lei) e `projetos` (id_proposicao, id_deputado, deputado, partido, uf,
+legislatura, legislatura_desc, tipo, numero, ano, data_apresentacao, ementa, link).
 
 ## O que conta como "virou lei"
 
@@ -110,6 +132,7 @@ funciona no navegador).
 | `app.js` | Coleta na API, agregação, tabela, exportar/importar Excel |
 | `styles.css` | Estilos |
 | `vendor/xlsx.full.min.js` | Biblioteca [SheetJS](https://sheetjs.com) (gera/lê `.xlsx`) |
+| `vendor/sql-wasm.js` + `.wasm` | [sql.js](https://sql.js.org) — SQLite em WebAssembly (gera/lê `.db`) |
 
 ## Identidade visual
 

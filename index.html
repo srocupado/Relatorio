@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css?v=2" />
   <script src="vendor/xlsx.full.min.js"></script>
+  <script src="vendor/sql-wasm.js"></script>
 </head>
 <body>
   <header>
@@ -103,9 +104,14 @@
         </label>
         <button id="btnProcessar" class="primary" disabled>▶ Processar</button>
         <button id="btnExportar" disabled>⬇ Exportar Excel (.xlsx)</button>
+        <button id="btnExportarDb" disabled>⬇ Exportar SQLite (.db)</button>
         <label class="import-label">
           ⬆ Importar Excel
           <input type="file" id="fileImportar" accept=".xlsx,.xls" hidden />
+        </label>
+        <label class="import-label">
+          ⬆ Importar SQLite
+          <input type="file" id="fileImportarDb" accept=".db,.sqlite,.sqlite3" hidden />
         </label>
       </div>
       <p class="hint" id="arquivosSelecionados"></p>

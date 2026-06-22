@@ -419,6 +419,104 @@ function reconstruirDeXlsx(wb) {
   });
 }
 
+// ---- Banco de dados SQLite (sql.js / WebAssembly, sem instalar nada) --------
+
+let SQLJS = null;
+async function getSqlJs() {
+  if (!SQLJS) SQLJS = await initSqlJs({ locateFile: (f) => `vendor/${f}` });
+  return SQLJS;
+}
+
+/** Faz o download de um Blob como arquivo. */
+function baixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Exporta DADOS para um arquivo de banco SQLite (.db) com as tabelas ranking e projetos. */
+async function exportarSqlite() {
+  if (!DADOS.length) return;
+  try {
+    setStatus("Gerando banco SQLite...");
+    const SQL = await getSqlJs();
+    const db = new SQL.Database();
+    db.run(`
+      CREATE TABLE ranking (
+        id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT,
+        legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER
+      );
+      CREATE TABLE projetos (
+        id_proposicao INTEGER, id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT,
+        legislatura TEXT, legislatura_desc TEXT, tipo TEXT, numero INTEGER, ano INTEGER,
+        data_apresentacao TEXT, ementa TEXT, link TEXT
+      );`);
+
+    db.run("BEGIN");
+    const r = db.prepare("INSERT INTO ranking VALUES (?,?,?,?,?,?,?)");
+    for (const d of DADOS) {
+      r.run([d.depId, d.nome, d.partido, d.uf, d.legislatura, LEGISLATURAS[d.legislatura].rotulo, d.total]);
+    }
+    r.free();
+    const p = db.prepare("INSERT INTO projetos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    for (const d of DADOS) for (const pj of d.projetos) {
+      p.run([pj.id, d.depId, d.nome, d.partido, d.uf, d.legislatura,
+        LEGISLATURAS[d.legislatura].rotulo, pj.tipo, pj.numero, pj.ano,
+        (pj.dataApresentacao || "").slice(0, 10), pj.ementa, FICHA_URL(pj.id)]);
+    }
+    p.free();
+    db.run("COMMIT");
+
+    const bytes = db.export();
+    db.close();
+    baixarBlob(new Blob([bytes], { type: "application/x-sqlite3" }),
+      `deputados-projetos-em-lei-${new Date().toISOString().slice(0, 10)}.db`);
+    setStatus(`Banco SQLite gerado (${DADOS.length} registros na tabela 'ranking').`);
+  } catch (err) {
+    setStatus("Erro ao gerar o banco: " + err.message, true);
+    console.error(err);
+  }
+}
+
+/** Reconstrói DADOS a partir de um arquivo de banco SQLite exportado. */
+async function importarSqlite(file) {
+  mostrarProgresso(true);
+  setFase(`Importando banco "${file.name}"...`);
+  setProgresso(0, 1);
+  try {
+    const SQL = await getSqlJs();
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const db = new SQL.Database(buf);
+    const rk = db.exec("SELECT id_deputado, deputado, partido, uf, legislatura, projetos_em_lei FROM ranking");
+    const pj = db.exec("SELECT id_proposicao, id_deputado, legislatura, tipo, numero, ano, data_apresentacao, ementa FROM projetos");
+    db.close();
+
+    const porChave = new Map();
+    if (pj.length) for (const [id, idDep, leg, tipo, numero, ano, data, ementa] of pj[0].values) {
+      const chave = `${idDep}|${leg}`;
+      if (!porChave.has(chave)) porChave.set(chave, []);
+      porChave.get(chave).push({ id, tipo, numero, ano, ementa: ementa || "", dataApresentacao: data || "" });
+    }
+    DADOS = [];
+    if (rk.length) for (const [idDep, nome, partido, uf, leg, total] of rk[0].values) {
+      const projetos = porChave.get(`${idDep}|${leg}`) || [];
+      DADOS.push({
+        depId: idDep, nome, partido: partido || "", uf: uf || "",
+        legislatura: String(leg), total: total != null ? total : projetos.length, projetos,
+      });
+    }
+    mostrarProgresso(false);
+    finalizarRender();
+    setStatus(`Importado do banco "${file.name}": ${DADOS.length} registros.`);
+  } catch (err) {
+    mostrarProgresso(false);
+    setStatus("Erro ao importar o banco: " + err.message, true);
+    console.error(err);
+  }
+}
+
 // ---- UI / progresso ---------------------------------------------------------
 
 function getSelecionados(classe) {
@@ -460,6 +558,7 @@ function setProgressoBytes(recebido, total) {
 function finalizarRender() {
   document.getElementById("results").hidden = false;
   document.getElementById("btnExportar").disabled = DADOS.length === 0;
+  document.getElementById("btnExportarDb").disabled = DADOS.length === 0;
   popularFiltros();
   renderTabela();
 }
@@ -541,8 +640,13 @@ function configurarEventos() {
   });
 
   document.getElementById("btnExportar").addEventListener("click", exportarXlsx);
+  document.getElementById("btnExportarDb").addEventListener("click", exportarSqlite);
   document.getElementById("fileImportar").addEventListener("change", (e) => {
     if (e.target.files[0]) importarXlsx(e.target.files[0]);
+    e.target.value = "";
+  });
+  document.getElementById("fileImportarDb").addEventListener("change", (e) => {
+    if (e.target.files[0]) importarSqlite(e.target.files[0]);
     e.target.value = "";
   });
 
