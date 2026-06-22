@@ -31,6 +31,21 @@ python -m http.server 8000
 > **Python**: o `iniciar.bat` e o comando acima precisam do Python. Baixe em
 > <https://www.python.org/downloads/> e, na instalação, **marque "Add Python to PATH"**.
 
+## Acessar de outra máquina na rede
+
+1. Rode o `iniciar.bat` na máquina que servirá o site. Ele **mostra os endereços IPv4** desta
+   máquina (ex.: `http://192.168.0.15:8000/`). Use esse endereço na outra máquina — **não use
+   um IP terminado em `.1`**, que normalmente é o roteador, nem `localhost` (que só funciona na
+   própria máquina). Para conferir manualmente, rode `ipconfig` e procure o "Endereço IPv4".
+2. Se ainda não acessar, o **Firewall do Windows** está bloqueando a porta. Rode uma única vez
+   o **`liberar-firewall.bat`** com o botão direito → **Executar como administrador**. Ele
+   libera a porta 8000 (TCP) para a rede local.
+3. As duas máquinas precisam estar **na mesma rede** (mesmo Wi‑Fi/LAN). Redes corporativas com
+   "isolamento de cliente" podem bloquear o acesso entre máquinas — nesse caso, fale com a TI.
+
+> Os arquivos `proposicoes-AAAA.json` são lidos **no navegador de quem está acessando**, então
+> baixe-os na máquina que vai abrir a página (não na que serve o site).
+
 ### Passo a passo na interface
 
 1. **Baixe os arquivos oficiais** — clique nos links da página (passo 1) para baixar os

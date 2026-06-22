@@ -20,13 +20,23 @@ if errorlevel 1 (
 )
 
 echo.
-echo  Iniciando o servidor local em http://localhost:%PORT%
-echo  Abrindo o navegador... (deixe esta janela aberta enquanto usa o programa)
-echo  Para encerrar, feche esta janela ou tecle Ctrl+C.
+echo  ================================================================
+echo   Servidor local iniciando na porta %PORT%
+echo  ----------------------------------------------------------------
+echo   Nesta maquina:   http://localhost:%PORT%/
+echo.
+echo   De OUTRAS maquinas na rede, use um destes enderecos IPv4:
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do echo       http://%%a:%PORT%/
+echo.
+echo   Se outra maquina nao conseguir acessar, execute uma vez o
+echo   "liberar-firewall.bat" (botao direito - Executar como administrador).
+echo  ================================================================
+echo.
+echo   Deixe esta janela aberta. Para encerrar, tecle Ctrl+C ou feche-a.
 echo.
 
-rem --- Abre o navegador apos 2s (da tempo do servidor subir) ---
+rem --- Abre o navegador local apos 2s (da tempo do servidor subir) ---
 start "" cmd /c "timeout /t 2 >nul & start "" http://localhost:%PORT%/"
 
-rem --- Sobe o servidor (fica rodando nesta janela) ---
-%PY% -m http.server %PORT%
+rem --- Sobe o servidor escutando em todas as interfaces da rede ---
+%PY% -m http.server %PORT% --bind 0.0.0.0
