@@ -34,6 +34,16 @@ header {
   padding: 26px 22px;
 }
 header h1 { margin: 0 0 6px; font-size: 1.55rem; font-weight: 700; }
+.versao {
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+  background: var(--accent);
+  color: #04211f;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
 header .sub { margin: 0; max-width: 72ch; font-size: 0.95rem; color: var(--text-dim); }
 header a { color: var(--accent-light); }
 

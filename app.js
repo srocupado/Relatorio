@@ -8,6 +8,9 @@
 
 "use strict";
 
+const VERSAO = "v2 (corrigida — filtra via arquivos em massa)";
+console.log("Relatório de projetos em lei —", VERSAO);
+
 const API = "https://dadosabertos.camara.leg.br/api/v2";
 const ARQUIVOS = "https://dadosabertos.camara.leg.br/arquivos/proposicoes/json";
 const ID_SITUACAO_LEI = "1140"; // "Transformado em Norma Jurídica" (no ultimoStatus do arquivo)
