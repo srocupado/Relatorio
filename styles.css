@@ -70,6 +70,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px; }
 .aviso strong { color: var(--amarelo); }
 
 .hint { font-size: 0.85rem; color: var(--text-dim); margin: 6px 0 12px; }
+.hint.ok { color: var(--verde-claro); }
+.hint.faltando { color: var(--amarelo); }
 .hint code, p code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; color: var(--accent-light); }
 
 .links-arquivos { list-style: none; padding: 0; margin: 0 0 8px; }

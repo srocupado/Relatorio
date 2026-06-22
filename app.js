@@ -464,6 +464,42 @@ function finalizarRender() {
   renderTabela();
 }
 
+/** Anos de arquivo necessários para as legislaturas marcadas. */
+function anosNecessarios(legs) {
+  return new Set(legs.flatMap((l) => (LEGISLATURAS[l] ? LEGISLATURAS[l].anos : [])));
+}
+
+/** Extrai o ano (AAAA) do nome de cada arquivo selecionado. */
+function anosDosArquivos(files) {
+  const anos = new Set();
+  for (const f of files) {
+    const m = f.name.match(/(20\d{2})/);
+    if (m) anos.add(parseInt(m[1], 10));
+  }
+  return anos;
+}
+
+/** Mostra quais anos ainda faltam (ou confirma que está completo). */
+function atualizarStatusArquivos() {
+  const el = document.getElementById("statusArquivos");
+  const legs = getSelecionados("leg");
+  if (!legs.length || !ARQUIVOS_SELECIONADOS.length) {
+    el.textContent = ""; el.className = "hint"; return;
+  }
+  const necessarios = anosNecessarios(legs);
+  const presentes = anosDosArquivos(ARQUIVOS_SELECIONADOS);
+  const faltam = [...necessarios].filter((a) => !presentes.has(a)).sort();
+  if (faltam.length === 0) {
+    el.className = "hint ok";
+    el.textContent = "✓ Todos os arquivos das legislaturas marcadas estão selecionados.";
+  } else {
+    el.className = "hint faltando";
+    el.textContent = "⚠️ Faltam os arquivos: " +
+      faltam.map((a) => `proposicoes-${a}.json`).join(", ") +
+      " — baixe-os no passo 1 e inclua na seleção.";
+  }
+}
+
 function configurarEventos() {
   const fileArquivos = document.getElementById("fileArquivos");
   const btnProcessar = document.getElementById("btnProcessar");
@@ -474,7 +510,11 @@ function configurarEventos() {
     const nomes = ARQUIVOS_SELECIONADOS.map((f) => f.name).join(", ");
     document.getElementById("arquivosSelecionados").textContent =
       ARQUIVOS_SELECIONADOS.length ? `${ARQUIVOS_SELECIONADOS.length} arquivo(s): ${nomes}` : "";
+    atualizarStatusArquivos();
   });
+
+  document.querySelectorAll(".leg").forEach((c) =>
+    c.addEventListener("change", atualizarStatusArquivos));
 
   btnProcessar.addEventListener("click", async () => {
     const legs = getSelecionados("leg");
