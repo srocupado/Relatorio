@@ -71,6 +71,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px; }
 }
 .aviso strong { color: var(--amarelo); }
 
+.condicao-opt { display: inline-flex; gap: 6px; margin: 12px 0 4px; font-size: 0.9rem; color: var(--text-dim); }
 .hint { font-size: 0.85rem; color: var(--text-dim); margin: 6px 0 12px; }
 .hint.ok { color: var(--verde-claro); }
 .hint.faltando { color: var(--amarelo); }

@@ -153,6 +153,33 @@ function filtrarProjetosLei(arquivo, tipos) {
   return leis;
 }
 
+/** Busca o histórico do deputado (condição eleitoral por legislatura). */
+async function fetchHistorico(idDeputado) {
+  // OBS: o endpoint /historico NÃO aceita o parâmetro 'itens' (retorna 400).
+  const resp = await fetchComRetry(`${API}/deputados/${idDeputado}/historico`);
+  const json = await resp.json();
+  return json.dados || [];
+}
+
+/** Determina a condição (Titular/Efetivado/Suplente) do deputado numa legislatura. */
+function condicaoDaLegislatura(historico, leg) {
+  const conds = new Set();
+  for (const h of historico) {
+    if (String(h.idLegislatura) === String(leg) && h.condicaoEleitoral) conds.add(h.condicaoEleitoral);
+  }
+  if (conds.has("Titular")) return "Titular";
+  if (conds.has("Efetivado")) return "Efetivado";
+  if (conds.has("Suplente")) return "Suplente";
+  return "—";
+}
+
+/** Grupo para o filtro: Efetivado conta como titular. */
+function grupoCondicao(cond) {
+  if (cond === "Titular" || cond === "Efetivado") return "titular";
+  if (cond === "Suplente") return "suplente";
+  return "";
+}
+
 /** Busca os deputados autores de uma proposição (credita todos os autores). */
 async function fetchAutoresDeputados(idProposicao) {
   const resp = await fetchComRetry(`${API}/proposicoes/${idProposicao}/autores`);
@@ -168,7 +195,7 @@ async function fetchAutoresDeputados(idProposicao) {
 }
 
 /** Orquestra toda a coleta e monta DADOS. */
-async function coletar(legsSelecionadas, tipos, arquivos) {
+async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   // 1. Ler os arquivos locais e filtrar os projetos que viraram lei.
   const leisPorId = new Map();
   for (let i = 0; i < arquivos.length; i++) {
@@ -214,6 +241,25 @@ async function coletar(legsSelecionadas, tipos, arquivos) {
     (f, t) => setProgresso(f, t)
   );
 
+  // 3.5. (Opcional) Buscar a condição eleitoral (titular/suplente) por deputado.
+  const condicaoPorChave = new Map(); // `${depId}|${leg}` -> "Titular"/"Suplente"/"Efetivado"/"—"
+  if (usarCondicao) {
+    const idsCondicao = new Set(infoDep.keys());
+    for (const k of buckets.keys()) idsCondicao.add(parseInt(k.split("|")[0], 10));
+    setFase("Buscando condição (titular/suplente) dos deputados...");
+    await poolDeTarefas(
+      [...idsCondicao],
+      CONCORRENCIA,
+      async (depId) => {
+        const hist = await fetchHistorico(depId);
+        for (const leg of legsSelecionadas) {
+          condicaoPorChave.set(`${depId}|${leg}`, condicaoDaLegislatura(hist, leg));
+        }
+      },
+      (f, t) => setProgresso(f, t)
+    );
+  }
+
   // 4. Montar DADOS: todo deputado do roster (mostra zeros) + autores fora do roster.
   setFase("Montando o relatório...");
   DADOS = [];
@@ -229,6 +275,7 @@ async function coletar(legsSelecionadas, tipos, arquivos) {
       DADOS.push({
         depId, nome: info.nome, partido: info.partido, uf: info.uf,
         legislatura: leg, total: projetos.length, projetos,
+        condicao: usarCondicao ? (condicaoPorChave.get(`${depId}|${leg}`) || "—") : "—",
       });
     }
   }
@@ -262,6 +309,7 @@ function dadosFiltrados() {
   const leg = document.getElementById("filtroLeg").value;
   const partido = document.getElementById("filtroPartido").value;
   const uf = document.getElementById("filtroUf").value;
+  const condicao = document.getElementById("filtroCondicao").value;
   const soComLei = document.getElementById("filtroComLei").checked;
 
   let linhas = DADOS.filter((d) => {
@@ -269,6 +317,7 @@ function dadosFiltrados() {
     if (leg && d.legislatura !== leg) return false;
     if (partido && d.partido !== partido) return false;
     if (uf && d.uf !== uf) return false;
+    if (condicao && grupoCondicao(d.condicao) !== condicao) return false;
     if (soComLei && d.total === 0) return false;
     return true;
   });
@@ -296,6 +345,7 @@ function renderTabela() {
       <td>${escapar(d.nome)}</td>
       <td>${escapar(d.partido)}</td>
       <td class="num">${escapar(d.uf)}</td>
+      <td class="num">${escapar(d.condicao || "—")}</td>
       <td class="num">${LEGISLATURAS[d.legislatura].rotulo}</td>
       <td class="total">${d.total}</td>
       <td></td>`;
@@ -318,7 +368,7 @@ function alternarProjetos(tr, d) {
   const row = document.createElement("tr");
   row.className = "projetos-row";
   const td = document.createElement("td");
-  td.colSpan = 7;
+  td.colSpan = 8;
   const ol = document.createElement("ol");
   ol.className = "projetos-list";
   for (const p of d.projetos) {
@@ -344,6 +394,7 @@ function exportarXlsx() {
   if (!DADOS.length) return;
   const ranking = DADOS.map((d) => ({
     Deputado: d.nome, Partido: d.partido, UF: d.uf,
+    "Condição": d.condicao || "—",
     Legislatura: LEGISLATURAS[d.legislatura].rotulo,
     "Projetos convertidos em lei": d.total,
     Leg: d.legislatura, idDeputado: d.depId,
@@ -413,6 +464,7 @@ function reconstruirDeXlsx(wb) {
     const projetosLinha = projetosPorChave.get(`${r.idDeputado}|${leg}`) || [];
     return {
       depId: r.idDeputado, nome: r.Deputado, partido: r.Partido || "", uf: r.UF || "",
+      condicao: r["Condição"] || r["Condicao"] || "—",
       legislatura: leg, total: Number(r["Projetos convertidos em lei"]) || projetosLinha.length,
       projetos: projetosLinha,
     };
@@ -445,7 +497,7 @@ async function exportarSqlite() {
     const db = new SQL.Database();
     db.run(`
       CREATE TABLE ranking (
-        id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT,
+        id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT, condicao TEXT,
         legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER
       );
       CREATE TABLE projetos (
@@ -455,9 +507,10 @@ async function exportarSqlite() {
       );`);
 
     db.run("BEGIN");
-    const r = db.prepare("INSERT INTO ranking VALUES (?,?,?,?,?,?,?)");
+    const r = db.prepare("INSERT INTO ranking VALUES (?,?,?,?,?,?,?,?)");
     for (const d of DADOS) {
-      r.run([d.depId, d.nome, d.partido, d.uf, d.legislatura, LEGISLATURAS[d.legislatura].rotulo, d.total]);
+      r.run([d.depId, d.nome, d.partido, d.uf, d.condicao || "—",
+        d.legislatura, LEGISLATURAS[d.legislatura].rotulo, d.total]);
     }
     r.free();
     const p = db.prepare("INSERT INTO projetos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
@@ -489,7 +542,14 @@ async function importarSqlite(file) {
     const SQL = await getSqlJs();
     const buf = new Uint8Array(await file.arrayBuffer());
     const db = new SQL.Database(buf);
-    const rk = db.exec("SELECT id_deputado, deputado, partido, uf, legislatura, projetos_em_lei FROM ranking");
+    // 'condicao' pode não existir em bancos antigos; tenta com, cai sem.
+    let rk;
+    try {
+      rk = db.exec("SELECT id_deputado, deputado, partido, uf, condicao, legislatura, projetos_em_lei FROM ranking");
+    } catch (e) {
+      const r0 = db.exec("SELECT id_deputado, deputado, partido, uf, legislatura, projetos_em_lei FROM ranking");
+      rk = r0.length ? [{ values: r0[0].values.map((v) => [v[0], v[1], v[2], v[3], "—", v[4], v[5]]) }] : [];
+    }
     const pj = db.exec("SELECT id_proposicao, id_deputado, legislatura, tipo, numero, ano, data_apresentacao, ementa FROM projetos");
     db.close();
 
@@ -500,10 +560,10 @@ async function importarSqlite(file) {
       porChave.get(chave).push({ id, tipo, numero, ano, ementa: ementa || "", dataApresentacao: data || "" });
     }
     DADOS = [];
-    if (rk.length) for (const [idDep, nome, partido, uf, leg, total] of rk[0].values) {
+    if (rk.length) for (const [idDep, nome, partido, uf, condicao, leg, total] of rk[0].values) {
       const projetos = porChave.get(`${idDep}|${leg}`) || [];
       DADOS.push({
-        depId: idDep, nome, partido: partido || "", uf: uf || "",
+        depId: idDep, nome, partido: partido || "", uf: uf || "", condicao: condicao || "—",
         legislatura: String(leg), total: total != null ? total : projetos.length, projetos,
       });
     }
@@ -623,12 +683,13 @@ function configurarEventos() {
     if (!ARQUIVOS_SELECIONADOS.length)
       return setStatus("Selecione os arquivos proposicoes-AAAA.json baixados (passo 1).", true);
 
+    const usarCondicao = document.getElementById("chkCondicao").checked;
     btnProcessar.disabled = true;
     setStatus("");
     mostrarProgresso(true);
     setFase("Iniciando...");
     try {
-      await coletar(legs, tipos, ARQUIVOS_SELECIONADOS);
+      await coletar(legs, tipos, ARQUIVOS_SELECIONADOS, usarCondicao);
       finalizarRender();
     } catch (err) {
       mostrarProgresso(false);
@@ -650,7 +711,7 @@ function configurarEventos() {
     e.target.value = "";
   });
 
-  ["filtroNome", "filtroLeg", "filtroPartido", "filtroUf", "filtroComLei"].forEach((id) => {
+  ["filtroNome", "filtroLeg", "filtroPartido", "filtroUf", "filtroCondicao", "filtroComLei"].forEach((id) => {
     const el = document.getElementById(id);
     el.addEventListener("input", renderTabela);
     el.addEventListener("change", renderTabela);

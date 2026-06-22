@@ -92,6 +92,12 @@
         </fieldset>
       </div>
 
+      <label class="chk-inline condicao-opt">
+        <input type="checkbox" id="chkCondicao" checked />
+        Identificar condição <strong>titular/suplente</strong> de cada deputado
+        (busca extra por deputado na API — deixa a coleta mais lenta)
+      </label>
+
       <h2>3. Selecione os arquivos baixados e processe</h2>
       <p class="hint">
         Selecione os arquivos <code>proposicoes-AAAA.json</code> que você baixou no passo 1
@@ -140,6 +146,11 @@
         </select>
         <select id="filtroPartido"><option value="">Todos os partidos</option></select>
         <select id="filtroUf"><option value="">Todas as UFs</option></select>
+        <select id="filtroCondicao">
+          <option value="">Todas as condições</option>
+          <option value="titular">Titulares (e efetivados)</option>
+          <option value="suplente">Suplentes</option>
+        </select>
         <label class="chk-inline"><input type="checkbox" id="filtroComLei" /> Só com ≥ 1 projeto</label>
         <span class="result-count" id="resultCount"></span>
       </div>
@@ -151,6 +162,7 @@
             <th data-sort="nome">Deputado</th>
             <th data-sort="partido">Partido</th>
             <th data-sort="uf">UF</th>
+            <th data-sort="condicao">Condição</th>
             <th data-sort="legislatura">Legislatura</th>
             <th data-sort="total" class="sorted-desc">Projetos viraram lei</th>
             <th>Projetos</th>

@@ -111,6 +111,16 @@ Dois motivos técnicos:
 Os autores de cada projeto-lei vêm da API `/proposicoes/{id}/autores` (essa parte tem CORS e
 funciona no navegador).
 
+## Condição: titular × suplente
+
+Marcando "Identificar condição titular/suplente" (passo 2), o app consulta o histórico de
+cada deputado (`/deputados/{id}/historico`) e descobre a **condição em cada legislatura**:
+**Titular**, **Suplente** ou **Efetivado** (suplente que assumiu a cadeira em definitivo —
+contado junto dos titulares). O resultado vira a coluna **Condição** e um **filtro**
+(Titulares / Suplentes) nos resultados, além de ir para o Excel e o SQLite. Nada é excluído
+automaticamente: você decide no filtro. Essa etapa faz uma chamada extra por deputado, então
+deixa a coleta mais lenta — desmarque a opção se não precisar.
+
 ## Detalhes metodológicos
 
 - **Autoria**: todos os autores (deputados) listados de um projeto recebem crédito — inclusive
