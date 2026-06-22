@@ -10,9 +10,14 @@ de sua autoria transformados em lei** nas duas últimas legislaturas:
 ## Como usar
 
 A página funciona inteiramente no navegador. A API da Câmara permite chamadas diretas do
-browser (CORS liberado), então basta abrir a página.
+browser (CORS liberado), então basta servir a pasta localmente.
 
-**Opção recomendada** (evita restrições do protocolo `file://`):
+**Windows (mais simples):** dê **duplo clique em `iniciar.bat`**. Ele sobe um servidor local
+e abre o navegador em `http://localhost:8000` automaticamente. Deixe a janela preta aberta
+enquanto usa o programa; para encerrar, feche-a ou tecle **Ctrl+C**. (Requer Python — veja
+abaixo.)
+
+**Alternativa (qualquer sistema):**
 
 ```bash
 cd Relatorio
@@ -20,8 +25,8 @@ python -m http.server 8000
 # abra http://localhost:8000 no navegador
 ```
 
-Você também pode abrir o `index.html` diretamente (duplo clique), mas servir via HTTP é mais
-confiável.
+> **Python**: o `iniciar.bat` e o comando acima precisam do Python. Baixe em
+> <https://www.python.org/downloads/> e, na instalação, **marque "Add Python to PATH"**.
 
 ### Passo a passo na interface
 
