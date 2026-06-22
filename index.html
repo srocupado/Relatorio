@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Projetos convertidos em lei — Câmara dos Deputados (56ª e 57ª legislaturas)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="vendor/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Deputados com projetos convertidos em lei</h1>
+    <p class="sub">
+      Levantamento via API de
+      <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
+      dos projetos de autoria de deputados que foram <strong>Transformados em Norma Jurídica</strong>
+      (situação 1140) nas duas últimas legislaturas.
+    </p>
+  </header>
+
+  <main>
+    <section class="panel" id="config">
+      <h2>1. Configuração</h2>
+
+      <div class="config-grid">
+        <fieldset>
+          <legend>Legislaturas</legend>
+          <label><input type="checkbox" class="leg" value="57" checked /> 57ª (2023–2027)</label>
+          <label><input type="checkbox" class="leg" value="56" checked /> 56ª (2019–2023)</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Tipos de proposição</legend>
+          <label><input type="checkbox" class="tipo" value="PL" checked /> PL — Projeto de Lei</label>
+          <label><input type="checkbox" class="tipo" value="PLP" checked /> PLP — Lei Complementar</label>
+          <label><input type="checkbox" class="tipo" value="PDL" /> PDL — Decreto Legislativo</label>
+          <label><input type="checkbox" class="tipo" value="PDC" /> PDC — Decreto Legislativo (antigo)</label>
+          <label><input type="checkbox" class="tipo" value="MPV" /> MPV — Medida Provisória</label>
+          <label><input type="checkbox" class="tipo" value="PEC" /> PEC — Emenda à Constituição</label>
+        </fieldset>
+      </div>
+
+      <div class="actions">
+        <button id="btnColetar" class="primary">▶ Coletar dados da API</button>
+        <button id="btnExportar" disabled>⬇ Exportar Excel (.xlsx)</button>
+        <label class="import-label">
+          ⬆ Importar Excel
+          <input type="file" id="fileImportar" accept=".xlsx,.xls" hidden />
+        </label>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap" hidden>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-text" id="progressText"></span>
+      </div>
+      <p class="status" id="status"></p>
+    </section>
+
+    <section class="panel" id="results" hidden>
+      <h2>2. Resultados</h2>
+
+      <div class="filters">
+        <input type="search" id="filtroNome" placeholder="Buscar deputado..." />
+        <select id="filtroLeg">
+          <option value="">Todas as legislaturas</option>
+          <option value="57">57ª (2023–2027)</option>
+          <option value="56">56ª (2019–2023)</option>
+        </select>
+        <select id="filtroPartido"><option value="">Todos os partidos</option></select>
+        <select id="filtroUf"><option value="">Todas as UFs</option></select>
+        <label class="chk-inline"><input type="checkbox" id="filtroComLei" /> Só com ≥ 1 projeto</label>
+        <span class="result-count" id="resultCount"></span>
+      </div>
+
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th data-sort="rank">#</th>
+            <th data-sort="nome">Deputado</th>
+            <th data-sort="partido">Partido</th>
+            <th data-sort="uf">UF</th>
+            <th data-sort="legislatura">Legislatura</th>
+            <th data-sort="total" class="sorted-desc">Projetos viraram lei</th>
+            <th>Projetos</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Fonte: API de Dados Abertos da Câmara dos Deputados. "Virou lei" = situação
+      <em>Transformado em Norma Jurídica</em> (cód. 1140). Atribuição por legislatura usa a
+      <em>data de apresentação</em> do projeto. A lista inclui titulares e suplentes que
+      assumiram cadeira (mais que 513 por legislatura).
+    </p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
