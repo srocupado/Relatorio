@@ -1,11 +1,14 @@
 # Relatório — Deputados com projetos convertidos em lei
 
-Interface web (sem backend) que consulta a [API de Dados Abertos da Câmara dos
+Interface web (sem backend) que usa os [Dados Abertos da Câmara dos
 Deputados](https://dadosabertos.camara.leg.br/) e levanta **quais deputados tiveram projetos
-de sua autoria transformados em lei** nas duas últimas legislaturas:
+de sua autoria transformados em lei**, da 53ª à 57ª legislatura:
 
 - **57ª legislatura** — 2023 a 2027
 - **56ª legislatura** — 2019 a 2023
+- **55ª legislatura** — 2015 a 2019
+- **54ª legislatura** — 2011 a 2015
+- **53ª legislatura** — 2007 a 2011
 
 ## Como usar
 
