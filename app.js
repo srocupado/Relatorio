@@ -1,20 +1,24 @@
 /* Relatório: deputados com projetos convertidos em lei (56ª e 57ª legislaturas).
  *
- * IMPORTANTE: a API /proposicoes NÃO filtra por situação (o parâmetro codSituacao é
- * ignorado). Portanto, a única fonte confiável de "virou lei" é o campo ultimoStatus dos
- * ARQUIVOS EM MASSA oficiais (proposicoes-{ano}.json). O app baixa esses arquivos, filtra
- * localmente os PL/PLP com idSituacao "1140" (Transformado em Norma Jurídica) e, para cada
- * um, busca os autores em /proposicoes/{id}/autores (credita todos os autores). */
+ * IMPORTANTE:
+ * 1) A API /proposicoes NÃO filtra por situação (o parâmetro codSituacao é ignorado).
+ *    A única fonte confiável de "virou lei" é o campo ultimoStatus dos ARQUIVOS EM MASSA
+ *    oficiais (proposicoes-{ano}.json).
+ * 2) Esses arquivos NÃO têm CORS, então o navegador não consegue baixá-los. Por isso o
+ *    usuário baixa os arquivos manualmente e os SELECIONA aqui; o app os lê do disco,
+ *    filtra os PL/PLP com idSituacao "1140" (Transformado em Norma Jurídica) e, para cada
+ *    um, busca os autores em /proposicoes/{id}/autores (a API tem CORS). Credita todos os
+ *    autores (coautores inclusive). */
 
 "use strict";
 
-const VERSAO = "v2 (corrigida — filtra via arquivos em massa)";
+const VERSAO = "v3 (arquivos locais)";
 console.log("Relatório de projetos em lei —", VERSAO);
 
 const API = "https://dadosabertos.camara.leg.br/api/v2";
-const ARQUIVOS = "https://dadosabertos.camara.leg.br/arquivos/proposicoes/json";
 const ID_SITUACAO_LEI = "1140"; // "Transformado em Norma Jurídica" (no ultimoStatus do arquivo)
 const CONCORRENCIA = 6;
+let ARQUIVOS_SELECIONADOS = []; // File[]
 
 // Faixas de data de apresentação + anos de arquivo a baixar por legislatura.
 const LEGISLATURAS = {
@@ -57,30 +61,19 @@ async function fetchComRetry(url, tentativas = 5) {
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Baixa um JSON grande mostrando o progresso por bytes. */
-async function baixarJsonComProgresso(url, onBytes) {
-  const resp = await fetchComRetry(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} ao baixar ${url}`);
-  const total = parseInt(resp.headers.get("content-length") || "0", 10);
-
-  if (!resp.body || !resp.body.getReader) {
-    const texto = await resp.text(); // fallback sem streaming
-    return JSON.parse(texto);
-  }
-  const reader = resp.body.getReader();
-  const chunks = [];
-  let recebido = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    recebido += value.length;
-    if (onBytes) onBytes(recebido, total);
-  }
-  const buffer = new Uint8Array(recebido);
-  let pos = 0;
-  for (const c of chunks) { buffer.set(c, pos); pos += c.length; }
-  return JSON.parse(new TextDecoder("utf-8").decode(buffer));
+/** Lê um arquivo local (File) como texto, mostrando o progresso de leitura, e faz JSON.parse. */
+function lerJsonLocalComProgresso(file, onBytes) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onprogress = (e) => { if (onBytes && e.lengthComputable) onBytes(e.loaded, e.total); };
+    reader.onload = () => {
+      if (onBytes) onBytes(file.size, file.size);
+      try { resolve(JSON.parse(reader.result)); }
+      catch (err) { reject(new Error(`"${file.name}" não é um JSON válido: ${err.message}`)); }
+    };
+    reader.onerror = () => reject(new Error(`Falha ao ler o arquivo "${file.name}".`));
+    reader.readAsText(file, "utf-8");
+  });
 }
 
 /** Executa tarefas (funções que retornam Promise) com limite de concorrência. */
@@ -169,8 +162,24 @@ async function fetchAutoresDeputados(idProposicao) {
 }
 
 /** Orquestra toda a coleta e monta DADOS. */
-async function coletar(legsSelecionadas, tipos) {
-  // 1. Rosters de cada legislatura (nome/partido/UF + para mostrar zeros).
+async function coletar(legsSelecionadas, tipos, arquivos) {
+  // 1. Ler os arquivos locais e filtrar os projetos que viraram lei.
+  const leisPorId = new Map();
+  for (let i = 0; i < arquivos.length; i++) {
+    const file = arquivos[i];
+    setFase(`Lendo "${file.name}" (arquivo ${i + 1}/${arquivos.length})...`);
+    const arquivo = await lerJsonLocalComProgresso(file, (rec, tot) => setProgressoBytes(rec, tot));
+    setFase(`Filtrando projetos de "${file.name}"...`);
+    for (const lei of filtrarProjetosLei(arquivo, tipos)) {
+      const leg = classificarPorLegislatura(lei.dataApresentacao);
+      if (leg && legsSelecionadas.includes(leg) && !leisPorId.has(lei.id)) {
+        leisPorId.set(lei.id, { ...lei, leg });
+      }
+    }
+    setProgresso(i + 1, arquivos.length);
+  }
+
+  // 2. Buscar os deputados de cada legislatura (nome/partido/UF + para mostrar zeros).
   const rosterPorLeg = {};
   const infoDep = new Map();
   for (let i = 0; i < legsSelecionadas.length; i++) {
@@ -179,24 +188,6 @@ async function coletar(legsSelecionadas, tipos) {
     const lista = await fetchDeputados(leg, (f, t) => setProgresso(f, t));
     rosterPorLeg[leg] = new Set(lista.map((d) => d.id));
     for (const d of lista) if (!infoDep.has(d.id)) infoDep.set(d.id, d);
-  }
-
-  // 2. Baixar arquivos em massa dos anos necessários e filtrar os projetos que viraram lei.
-  const anos = [...new Set(legsSelecionadas.flatMap((l) => LEGISLATURAS[l].anos))].sort();
-  const leisPorId = new Map();
-  for (let i = 0; i < anos.length; i++) {
-    const ano = anos[i];
-    setFase(`Baixando proposições de ${ano} (arquivo ${i + 1}/${anos.length})...`);
-    const arquivo = await baixarJsonComProgresso(`${ARQUIVOS}/proposicoes-${ano}.json`,
-      (rec, tot) => setProgressoBytes(rec, tot));
-    setFase(`Filtrando projetos de ${ano} que viraram lei...`);
-    for (const lei of filtrarProjetosLei(arquivo, tipos)) {
-      const leg = classificarPorLegislatura(lei.dataApresentacao);
-      if (leg && legsSelecionadas.includes(leg) && !leisPorId.has(lei.id)) {
-        leisPorId.set(lei.id, { ...lei, leg });
-      }
-    }
-    setProgresso(i + 1, anos.length);
   }
 
   const leis = [...leisPorId.values()];
@@ -468,26 +459,38 @@ function finalizarRender() {
 }
 
 function configurarEventos() {
-  document.getElementById("btnColetar").addEventListener("click", async () => {
+  const fileArquivos = document.getElementById("fileArquivos");
+  const btnProcessar = document.getElementById("btnProcessar");
+
+  fileArquivos.addEventListener("change", (e) => {
+    ARQUIVOS_SELECIONADOS = [...e.target.files];
+    btnProcessar.disabled = ARQUIVOS_SELECIONADOS.length === 0;
+    const nomes = ARQUIVOS_SELECIONADOS.map((f) => f.name).join(", ");
+    document.getElementById("arquivosSelecionados").textContent =
+      ARQUIVOS_SELECIONADOS.length ? `${ARQUIVOS_SELECIONADOS.length} arquivo(s): ${nomes}` : "";
+  });
+
+  btnProcessar.addEventListener("click", async () => {
     const legs = getSelecionados("leg");
     const tipos = getSelecionados("tipo");
     if (!legs.length) return setStatus("Selecione ao menos uma legislatura.", true);
     if (!tipos.length) return setStatus("Selecione ao menos um tipo de proposição.", true);
+    if (!ARQUIVOS_SELECIONADOS.length)
+      return setStatus("Selecione os arquivos proposicoes-AAAA.json baixados (passo 1).", true);
 
-    const btn = document.getElementById("btnColetar");
-    btn.disabled = true;
+    btnProcessar.disabled = true;
     setStatus("");
     mostrarProgresso(true);
     setFase("Iniciando...");
     try {
-      await coletar(legs, tipos);
+      await coletar(legs, tipos, ARQUIVOS_SELECIONADOS);
       finalizarRender();
     } catch (err) {
       mostrarProgresso(false);
-      setStatus("Erro na coleta: " + err.message, true);
+      setStatus("Erro ao processar: " + err.message, true);
       console.error(err);
     } finally {
-      btn.disabled = false;
+      btnProcessar.disabled = false;
     }
   });
 

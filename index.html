@@ -12,7 +12,7 @@
 </head>
 <body>
   <header>
-    <h1>Deputados com projetos convertidos em lei <span class="versao">v2 · corrigida</span></h1>
+    <h1>Deputados com projetos convertidos em lei <span class="versao">v3 · arquivos locais</span></h1>
     <p class="sub">
       Levantamento com os
       <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
@@ -24,16 +24,30 @@
 
   <main>
     <section class="panel" id="config">
-      <h2>1. Configuração</h2>
-
+      <h2>1. Baixe os arquivos oficiais da Câmara</h2>
       <p class="aviso">
-        ⚠️ A coleta baixa os <strong>arquivos oficiais em massa</strong> da Câmara para
-        identificar corretamente os projetos que viraram lei (a API não filtra por situação).
-        São arquivos grandes: cerca de <strong>240 MB</strong> por legislatura
-        (~<strong>590 MB</strong> para as duas). Use uma conexão estável; o progresso aparece
-        abaixo.
+        ⚠️ A Câmara <strong>não permite</strong> que o navegador baixe os arquivos de dados em
+        massa diretamente (bloqueio de CORS). Por isso, <strong>baixe os arquivos abaixo</strong>
+        (clique com o botão direito → "Salvar link como…", ou apenas clique) e depois
+        selecione-os no passo 3. São arquivos grandes (90–160 MB cada).
       </p>
+      <ul class="links-arquivos">
+        <li><strong>56ª legislatura (2019–2023):</strong>
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2019.json" download>2019</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2020.json" download>2020</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2021.json" download>2021</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2022.json" download>2022</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2023.json" download>2023</a>
+        </li>
+        <li><strong>57ª legislatura (2023–2027):</strong>
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2023.json" download>2023</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2024.json" download>2024</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2025.json" download>2025</a>,
+          <a href="https://dadosabertos.camara.leg.br/arquivos/proposicoes/json/proposicoes-2026.json" download>2026</a>
+        </li>
+      </ul>
 
+      <h2>2. Configuração</h2>
       <div class="config-grid">
         <fieldset>
           <legend>Legislaturas</legend>
@@ -52,14 +66,25 @@
         </fieldset>
       </div>
 
+      <h2>3. Selecione os arquivos baixados e processe</h2>
+      <p class="hint">
+        Selecione os arquivos <code>proposicoes-AAAA.json</code> que você baixou no passo 1
+        (pode escolher vários de uma vez). A busca dos autores e dos deputados é feita pela API
+        (essa parte funciona no navegador).
+      </p>
       <div class="actions">
-        <button id="btnColetar" class="primary">▶ Coletar dados da API</button>
+        <label class="import-label primary">
+          📂 Selecionar arquivos…
+          <input type="file" id="fileArquivos" accept=".json,application/json" multiple hidden />
+        </label>
+        <button id="btnProcessar" class="primary" disabled>▶ Processar</button>
         <button id="btnExportar" disabled>⬇ Exportar Excel (.xlsx)</button>
         <label class="import-label">
           ⬆ Importar Excel
           <input type="file" id="fileImportar" accept=".xlsx,.xls" hidden />
         </label>
       </div>
+      <p class="hint" id="arquivosSelecionados"></p>
 
       <div class="progress-wrap" id="progressWrap" hidden>
         <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -69,7 +94,7 @@
     </section>
 
     <section class="panel" id="results" hidden>
-      <h2>2. Resultados</h2>
+      <h2>4. Resultados</h2>
 
       <div class="filters">
         <input type="search" id="filtroNome" placeholder="Buscar deputado..." />

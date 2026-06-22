@@ -69,6 +69,22 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px; }
 }
 .aviso strong { color: var(--amarelo); }
 
+.hint { font-size: 0.85rem; color: var(--text-dim); margin: 6px 0 12px; }
+.hint code, p code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; color: var(--accent-light); }
+
+.links-arquivos { list-style: none; padding: 0; margin: 0 0 8px; }
+.links-arquivos li { margin: 8px 0; }
+.links-arquivos a {
+  display: inline-block;
+  margin: 2px 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent-light);
+  text-decoration: none;
+}
+.links-arquivos a:hover { background: rgba(31, 165, 165, 0.15); }
+
 .config-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

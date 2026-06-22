@@ -30,20 +30,22 @@ python -m http.server 8000
 
 ### Passo a passo na interface
 
-1. **Configuração** — escolha as legislaturas e os tipos de proposição. O padrão é **PL**
-   (Projeto de Lei) e **PLP** (Projeto de Lei Complementar).
-2. **Coletar dados** — a coleta **baixa os arquivos oficiais em massa** da Câmara
-   (`proposicoes-{ano}.json`) dos anos das legislaturas escolhidas, filtra localmente os
-   projetos que viraram lei e busca os autores de cada um. **Atenção:** são arquivos grandes
-   (~240 MB por legislatura, ~590 MB para as duas). Uma barra de progresso mostra cada etapa
-   (download por MB, filtragem e busca de autores).
-3. **Resultados** — tabela ordenável e com filtros (nome, legislatura, partido, UF, "só com
+1. **Baixe os arquivos oficiais** — clique nos links da página (passo 1) para baixar os
+   arquivos `proposicoes-AAAA.json` dos anos das legislaturas desejadas e salve no computador.
+   São grandes (90–160 MB cada). Anos: 56ª → 2019–2023; 57ª → 2023–2026.
+2. **Configuração** — escolha as legislaturas e os tipos de proposição (padrão: **PL** e
+   **PLP**).
+3. **Selecione os arquivos baixados e processe** — clique em "Selecionar arquivos…", escolha
+   os `proposicoes-AAAA.json` baixados (pode marcar vários) e clique em **Processar**. O app
+   lê os arquivos do disco, filtra os projetos que viraram lei e busca os autores na API. Uma
+   barra de progresso mostra cada etapa.
+4. **Resultados** — tabela ordenável e com filtros (nome, legislatura, partido, UF, "só com
    ≥ 1 projeto"). Clique em "ver N" para listar os projetos de cada deputado, com link para a
    ficha de tramitação.
-4. **Exportar Excel (.xlsx)** — gera um arquivo local com duas planilhas: `Ranking` (um
+5. **Exportar Excel (.xlsx)** — gera um arquivo local com duas planilhas: `Ranking` (um
    deputado por legislatura) e `Projetos` (um projeto por linha).
-5. **Importar Excel** — recarrega um arquivo exportado anteriormente para filtrar/ordenar
-   **sem refazer a coleta**.
+6. **Importar Excel** — recarrega um arquivo exportado anteriormente para filtrar/ordenar
+   **sem refazer o processamento**.
 
 ## O que conta como "virou lei"
 
@@ -53,14 +55,21 @@ Um projeto é considerado convertido em lei quando sua situação de tramitaçã
 tendem a inflar o ranking com decretos legislativos de baixa substância, como concessões de
 rádio/TV e tratados).
 
-## Por que baixar os arquivos em massa?
+## Por que selecionar arquivos manualmente?
 
-A API `/proposicoes` **não filtra por situação de tramitação** — o parâmetro `codSituacao` é
-aceito mas **silenciosamente ignorado**. Consultar a situação proposição por proposição
-exigiria dezenas de milhares de chamadas. A única fonte confiável e eficiente é o campo
-`ultimoStatus` presente nos **arquivos oficiais em massa** (`proposicoes-{ano}.json`), que o
-app baixa e filtra localmente. Os autores de cada projeto-lei vêm então de
-`/proposicoes/{id}/autores`.
+Dois motivos técnicos:
+
+1. A API `/proposicoes` **não filtra por situação de tramitação** — o parâmetro `codSituacao`
+   é aceito mas **silenciosamente ignorado**. Consultar a situação proposição por proposição
+   exigiria dezenas de milhares de chamadas. A única fonte confiável é o campo `ultimoStatus`
+   dos **arquivos oficiais em massa** (`proposicoes-{ano}.json`).
+2. Esses arquivos **não enviam cabeçalho CORS**, então o navegador **não consegue baixá-los
+   via JavaScript** (dá "Failed to fetch"). Por isso o app não baixa sozinho: você baixa os
+   arquivos pelos links (um download normal do navegador funciona, pois não é uma leitura via
+   `fetch`) e os seleciona no app, que então os lê do seu disco.
+
+Os autores de cada projeto-lei vêm da API `/proposicoes/{id}/autores` (essa parte tem CORS e
+funciona no navegador).
 
 ## Detalhes metodológicos
 
