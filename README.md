@@ -27,29 +27,41 @@ confiável.
 
 1. **Configuração** — escolha as legislaturas e os tipos de proposição. O padrão é **PL**
    (Projeto de Lei) e **PLP** (Projeto de Lei Complementar).
-2. **Coletar dados da API** — a coleta consulta cada deputado das legislaturas selecionadas
-   (~900 por legislatura, incluindo suplentes). Acompanhe a barra de progresso.
+2. **Coletar dados** — a coleta **baixa os arquivos oficiais em massa** da Câmara
+   (`proposicoes-{ano}.json`) dos anos das legislaturas escolhidas, filtra localmente os
+   projetos que viraram lei e busca os autores de cada um. **Atenção:** são arquivos grandes
+   (~240 MB por legislatura, ~590 MB para as duas). Uma barra de progresso mostra cada etapa
+   (download por MB, filtragem e busca de autores).
 3. **Resultados** — tabela ordenável e com filtros (nome, legislatura, partido, UF, "só com
    ≥ 1 projeto"). Clique em "ver N" para listar os projetos de cada deputado, com link para a
    ficha de tramitação.
 4. **Exportar Excel (.xlsx)** — gera um arquivo local com duas planilhas: `Ranking` (um
    deputado por legislatura) e `Projetos` (um projeto por linha).
 5. **Importar Excel** — recarrega um arquivo exportado anteriormente para filtrar/ordenar
-   **sem reconsultar a API**.
+   **sem refazer a coleta**.
 
 ## O que conta como "virou lei"
 
 Um projeto é considerado convertido em lei quando sua situação de tramitação é
-**"Transformado em Norma Jurídica"** (código `1140` na API). Por padrão consideramos apenas
+**"Transformado em Norma Jurídica"** (`idSituacao` `1140`). Por padrão consideramos apenas
 **PL** e **PLP**; é possível incluir também PDL, PDC, MPV e PEC pelos checkboxes (PDL/PDC
 tendem a inflar o ranking com decretos legislativos de baixa substância, como concessões de
 rádio/TV e tratados).
 
+## Por que baixar os arquivos em massa?
+
+A API `/proposicoes` **não filtra por situação de tramitação** — o parâmetro `codSituacao` é
+aceito mas **silenciosamente ignorado**. Consultar a situação proposição por proposição
+exigiria dezenas de milhares de chamadas. A única fonte confiável e eficiente é o campo
+`ultimoStatus` presente nos **arquivos oficiais em massa** (`proposicoes-{ano}.json`), que o
+app baixa e filtra localmente. Os autores de cada projeto-lei vêm então de
+`/proposicoes/{id}/autores`.
+
 ## Detalhes metodológicos
 
-- **Autoria**: todos os autores listados de um projeto recebem crédito (coautores incluídos).
-  Isso decorre naturalmente do filtro `idDeputadoAutor` da API, que retorna o projeto para
-  cada um de seus autores.
+- **Autoria**: todos os autores (deputados) listados de um projeto recebem crédito — inclusive
+  coautores. Isso significa que projetos com muitas assinaturas creditam todos os signatários,
+  e coassinantes prolíficos tendem a aparecer no topo do ranking.
 - **Atribuição por legislatura**: usa a **data de apresentação** do projeto, não a data em
   que virou lei. Um projeto apresentado numa legislatura mas convertido em lei na seguinte é
   contado na legislatura em que foi apresentado.

@@ -14,16 +14,25 @@
   <header>
     <h1>Deputados com projetos convertidos em lei</h1>
     <p class="sub">
-      Levantamento via API de
+      Levantamento com os
       <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
       dos projetos de autoria de deputados que foram <strong>Transformados em Norma Jurídica</strong>
-      (situação 1140) nas duas últimas legislaturas.
+      (situação 1140) nas duas últimas legislaturas. Todos os autores (coautores inclusive)
+      são creditados.
     </p>
   </header>
 
   <main>
     <section class="panel" id="config">
       <h2>1. Configuração</h2>
+
+      <p class="aviso">
+        ⚠️ A coleta baixa os <strong>arquivos oficiais em massa</strong> da Câmara para
+        identificar corretamente os projetos que viraram lei (a API não filtra por situação).
+        São arquivos grandes: cerca de <strong>240 MB</strong> por legislatura
+        (~<strong>590 MB</strong> para as duas). Use uma conexão estável; o progresso aparece
+        abaixo.
+      </p>
 
       <div class="config-grid">
         <fieldset>

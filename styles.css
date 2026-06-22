@@ -48,6 +48,17 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px; }
 }
 .panel h2 { margin-top: 0; font-size: 1.15rem; color: var(--accent-light); font-weight: 600; }
 
+.aviso {
+  background: rgba(240, 192, 64, 0.1);
+  border: 1px solid var(--amarelo);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+.aviso strong { color: var(--amarelo); }
+
 .config-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

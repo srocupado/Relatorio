@@ -1,16 +1,24 @@
-/* Relatório: deputados com projetos convertidos em lei (56ª e 57ª legislaturas)
- * Consulta a API de Dados Abertos da Câmara dos Deputados diretamente do navegador. */
+/* Relatório: deputados com projetos convertidos em lei (56ª e 57ª legislaturas).
+ *
+ * IMPORTANTE: a API /proposicoes NÃO filtra por situação (o parâmetro codSituacao é
+ * ignorado). Portanto, a única fonte confiável de "virou lei" é o campo ultimoStatus dos
+ * ARQUIVOS EM MASSA oficiais (proposicoes-{ano}.json). O app baixa esses arquivos, filtra
+ * localmente os PL/PLP com idSituacao "1140" (Transformado em Norma Jurídica) e, para cada
+ * um, busca os autores em /proposicoes/{id}/autores (credita todos os autores). */
 
 "use strict";
 
 const API = "https://dadosabertos.camara.leg.br/api/v2";
-const COD_TRANSFORMADO_EM_LEI = "1140"; // "Transformado em Norma Jurídica"
-const CONCORRENCIA = 5;
+const ARQUIVOS = "https://dadosabertos.camara.leg.br/arquivos/proposicoes/json";
+const ID_SITUACAO_LEI = "1140"; // "Transformado em Norma Jurídica" (no ultimoStatus do arquivo)
+const CONCORRENCIA = 6;
 
-// Faixas de data de apresentação por legislatura (usadas para classificar os projetos).
+// Faixas de data de apresentação + anos de arquivo a baixar por legislatura.
 const LEGISLATURAS = {
-  "57": { rotulo: "57ª (2023–2027)", inicio: "2023-02-01", fim: "2027-01-31" },
-  "56": { rotulo: "56ª (2019–2023)", inicio: "2019-02-01", fim: "2023-01-31" },
+  "57": { rotulo: "57ª (2023–2027)", inicio: "2023-02-01", fim: "2027-01-31",
+          anos: [2023, 2024, 2025, 2026] },
+  "56": { rotulo: "56ª (2019–2023)", inicio: "2019-02-01", fim: "2023-01-31",
+          anos: [2019, 2020, 2021, 2022, 2023] },
 };
 
 const FICHA_URL = (id) =>
@@ -46,12 +54,37 @@ async function fetchComRetry(url, tentativas = 5) {
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Baixa um JSON grande mostrando o progresso por bytes. */
+async function baixarJsonComProgresso(url, onBytes) {
+  const resp = await fetchComRetry(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} ao baixar ${url}`);
+  const total = parseInt(resp.headers.get("content-length") || "0", 10);
+
+  if (!resp.body || !resp.body.getReader) {
+    const texto = await resp.text(); // fallback sem streaming
+    return JSON.parse(texto);
+  }
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let recebido = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    recebido += value.length;
+    if (onBytes) onBytes(recebido, total);
+  }
+  const buffer = new Uint8Array(recebido);
+  let pos = 0;
+  for (const c of chunks) { buffer.set(c, pos); pos += c.length; }
+  return JSON.parse(new TextDecoder("utf-8").decode(buffer));
+}
+
 /** Executa tarefas (funções que retornam Promise) com limite de concorrência. */
 async function poolDeTarefas(itens, limite, worker, onProgresso) {
   const resultados = new Array(itens.length);
   let proximo = 0;
   let concluidos = 0;
-
   async function executor() {
     while (proximo < itens.length) {
       const i = proximo++;
@@ -60,7 +93,6 @@ async function poolDeTarefas(itens, limite, worker, onProgresso) {
       if (onProgresso) onProgresso(concluidos, itens.length);
     }
   }
-
   const executores = [];
   for (let k = 0; k < Math.min(limite, itens.length); k++) executores.push(executor());
   await Promise.all(executores);
@@ -68,58 +100,6 @@ async function poolDeTarefas(itens, limite, worker, onProgresso) {
 }
 
 // ---- Coleta de dados --------------------------------------------------------
-
-/** Busca todos os deputados de uma legislatura (paginado). */
-async function fetchDeputados(idLegislatura) {
-  const deputados = [];
-  let pagina = 1;
-  while (true) {
-    const url = `${API}/deputados?idLegislatura=${idLegislatura}&ordem=ASC&ordenarPor=nome&itens=100&pagina=${pagina}`;
-    const resp = await fetchComRetry(url);
-    const json = await resp.json();
-    for (const d of json.dados) {
-      deputados.push({
-        id: d.id,
-        nome: d.nome,
-        partido: d.siglaPartido || "",
-        uf: d.siglaUf || "",
-      });
-    }
-    const total = parseInt(resp.headers.get("x-total-count") || "0", 10);
-    if (pagina * 100 >= total || json.dados.length === 0) break;
-    pagina++;
-  }
-  return deputados;
-}
-
-/** Busca todos os projetos (dos tipos dados) de autoria do deputado que viraram lei. */
-async function fetchProjetosAprovados(idDeputado, tipos) {
-  const tipoParam = encodeURIComponent(tipos.join(","));
-  const projetos = [];
-  let pagina = 1;
-  while (true) {
-    const url =
-      `${API}/proposicoes?idDeputadoAutor=${idDeputado}` +
-      `&codSituacao=${COD_TRANSFORMADO_EM_LEI}&siglaTipo=${tipoParam}` +
-      `&itens=100&ordenarPor=id&ordem=ASC&pagina=${pagina}`;
-    const resp = await fetchComRetry(url);
-    const json = await resp.json();
-    for (const p of json.dados) {
-      projetos.push({
-        id: p.id,
-        tipo: p.siglaTipo,
-        numero: p.numero,
-        ano: p.ano,
-        ementa: p.ementa || "",
-        dataApresentacao: p.dataApresentacao || "",
-      });
-    }
-    const total = parseInt(resp.headers.get("x-total-count") || "0", 10);
-    if (pagina * 100 >= total || json.dados.length === 0) break;
-    pagina++;
-  }
-  return projetos;
-}
 
 /** Retorna a chave da legislatura ("56"/"57") para uma data de apresentação, ou null. */
 function classificarPorLegislatura(dataApresentacao) {
@@ -132,68 +112,130 @@ function classificarPorLegislatura(dataApresentacao) {
   return null;
 }
 
+/** Busca todos os deputados de uma legislatura (paginado), com progresso. */
+async function fetchDeputados(idLegislatura, onProgresso) {
+  const deputados = [];
+  let pagina = 1, total = 0;
+  while (true) {
+    const url = `${API}/deputados?idLegislatura=${idLegislatura}&ordem=ASC&ordenarPor=nome&itens=100&pagina=${pagina}`;
+    const resp = await fetchComRetry(url);
+    const json = await resp.json();
+    for (const d of json.dados) {
+      deputados.push({ id: d.id, nome: d.nome, partido: d.siglaPartido || "", uf: d.siglaUf || "" });
+    }
+    total = parseInt(resp.headers.get("x-total-count") || "0", 10);
+    if (onProgresso) onProgresso(deputados.length, total || deputados.length);
+    if (pagina * 100 >= total || json.dados.length === 0) break;
+    pagina++;
+  }
+  return deputados;
+}
+
+/** Lê um arquivo em massa e devolve os PL/PLP (tipos) que viraram norma jurídica. */
+function filtrarProjetosLei(arquivo, tipos) {
+  const arr = Array.isArray(arquivo) ? arquivo : arquivo.dados || [];
+  const leis = [];
+  for (const p of arr) {
+    if (!tipos.includes(p.siglaTipo)) continue;
+    const st = p.ultimoStatus || {};
+    if (String(st.idSituacao) !== ID_SITUACAO_LEI) continue;
+    leis.push({
+      id: p.id,
+      tipo: p.siglaTipo,
+      numero: p.numero,
+      ano: p.ano,
+      ementa: p.ementa || "",
+      dataApresentacao: p.dataApresentacao || "",
+    });
+  }
+  return leis;
+}
+
+/** Busca os deputados autores de uma proposição (credita todos os autores). */
+async function fetchAutoresDeputados(idProposicao) {
+  const resp = await fetchComRetry(`${API}/proposicoes/${idProposicao}/autores`);
+  const json = await resp.json();
+  const autores = [];
+  for (const a of json.dados) {
+    if (a.codTipo !== 10000) continue; // 10000 = Deputado(a)
+    const m = (a.uri || "").match(/\/deputados\/(\d+)/);
+    if (!m) continue;
+    autores.push({ id: parseInt(m[1], 10), nome: a.nome });
+  }
+  return autores;
+}
+
 /** Orquestra toda a coleta e monta DADOS. */
 async function coletar(legsSelecionadas, tipos) {
-  // 1. Rosters de cada legislatura selecionada + união por id.
-  setStatus("Buscando lista de deputados...");
-  const rosterPorLeg = {}; // leg -> Set(depId)
-  const infoDep = new Map(); // depId -> { nome, partido, uf }
-  for (const leg of legsSelecionadas) {
-    const lista = await fetchDeputados(leg);
+  // 1. Rosters de cada legislatura (nome/partido/UF + para mostrar zeros).
+  const rosterPorLeg = {};
+  const infoDep = new Map();
+  for (let i = 0; i < legsSelecionadas.length; i++) {
+    const leg = legsSelecionadas[i];
+    setFase(`Buscando deputados da ${LEGISLATURAS[leg].rotulo}...`);
+    const lista = await fetchDeputados(leg, (f, t) => setProgresso(f, t));
     rosterPorLeg[leg] = new Set(lista.map((d) => d.id));
     for (const d of lista) if (!infoDep.has(d.id)) infoDep.set(d.id, d);
   }
 
-  const idsUnicos = [...infoDep.keys()];
-  setStatus(`Consultando projetos de ${idsUnicos.length} deputados...`);
-  mostrarProgresso(true);
-
-  // 2. Para cada deputado, buscar projetos aprovados e separar por legislatura.
-  const bucketsPorDep = new Map(); // depId -> { "56": [...], "57": [...] }
-  await poolDeTarefas(
-    idsUnicos,
-    CONCORRENCIA,
-    async (depId) => {
-      const projetos = await fetchProjetosAprovados(depId, tipos);
-      const buckets = {};
-      for (const p of projetos) {
-        const leg = classificarPorLegislatura(p.dataApresentacao);
-        if (leg && legsSelecionadas.includes(leg)) {
-          (buckets[leg] = buckets[leg] || []).push(p);
-        }
+  // 2. Baixar arquivos em massa dos anos necessários e filtrar os projetos que viraram lei.
+  const anos = [...new Set(legsSelecionadas.flatMap((l) => LEGISLATURAS[l].anos))].sort();
+  const leisPorId = new Map();
+  for (let i = 0; i < anos.length; i++) {
+    const ano = anos[i];
+    setFase(`Baixando proposições de ${ano} (arquivo ${i + 1}/${anos.length})...`);
+    const arquivo = await baixarJsonComProgresso(`${ARQUIVOS}/proposicoes-${ano}.json`,
+      (rec, tot) => setProgressoBytes(rec, tot));
+    setFase(`Filtrando projetos de ${ano} que viraram lei...`);
+    for (const lei of filtrarProjetosLei(arquivo, tipos)) {
+      const leg = classificarPorLegislatura(lei.dataApresentacao);
+      if (leg && legsSelecionadas.includes(leg) && !leisPorId.has(lei.id)) {
+        leisPorId.set(lei.id, { ...lei, leg });
       }
-      bucketsPorDep.set(depId, buckets);
+    }
+    setProgresso(i + 1, anos.length);
+  }
+
+  const leis = [...leisPorId.values()];
+  // 3. Buscar autores de cada lei (credita todos os autores deputados).
+  setFase(`Buscando autores de ${leis.length} projetos convertidos em lei...`);
+  const buckets = new Map(); // `${depId}|${leg}` -> { info, projetos: [] }
+  await poolDeTarefas(
+    leis,
+    CONCORRENCIA,
+    async (lei) => {
+      const autores = await fetchAutoresDeputados(lei.id);
+      for (const a of autores) {
+        const chave = `${a.id}|${lei.leg}`;
+        if (!buckets.has(chave)) buckets.set(chave, { depId: a.id, nome: a.nome, projetos: [] });
+        buckets.get(chave).projetos.push(lei);
+      }
     },
-    (feitos, total) => atualizarProgresso(feitos, total)
+    (f, t) => setProgresso(f, t)
   );
 
-  // 3. Montar linhas: uma por (deputado, legislatura) quando faz parte do roster
-  //    ou possui ao menos um projeto naquela legislatura.
+  // 4. Montar DADOS: todo deputado do roster (mostra zeros) + autores fora do roster.
+  setFase("Montando o relatório...");
   DADOS = [];
-  for (const depId of idsUnicos) {
-    const info = infoDep.get(depId);
-    const buckets = bucketsPorDep.get(depId) || {};
-    for (const leg of legsSelecionadas) {
-      const projetos = buckets[leg] || [];
-      const noRoster = rosterPorLeg[leg] && rosterPorLeg[leg].has(depId);
-      if (!noRoster && projetos.length === 0) continue;
+  for (const leg of legsSelecionadas) {
+    const idsLeg = new Set([
+      ...(rosterPorLeg[leg] || []),
+      ...[...buckets.keys()].filter((k) => k.endsWith(`|${leg}`)).map((k) => parseInt(k.split("|")[0], 10)),
+    ]);
+    for (const depId of idsLeg) {
+      const bucket = buckets.get(`${depId}|${leg}`);
+      const info = infoDep.get(depId) || { nome: (bucket && bucket.nome) || `Deputado ${depId}`, partido: "", uf: "" };
+      const projetos = bucket ? bucket.projetos : [];
       DADOS.push({
-        depId,
-        nome: info.nome,
-        partido: info.partido,
-        uf: info.uf,
-        legislatura: leg,
-        total: projetos.length,
-        projetos,
+        depId, nome: info.nome, partido: info.partido, uf: info.uf,
+        legislatura: leg, total: projetos.length, projetos,
       });
     }
   }
 
   mostrarProgresso(false);
-  setStatus(
-    `Coleta concluída: ${DADOS.length} registros (deputado × legislatura). ` +
-      `Tipos: ${tipos.join(", ")}.`
-  );
+  setStatus(`Coleta concluída: ${leis.length} projetos convertidos em lei • ` +
+    `${DADOS.length} registros (deputado × legislatura). Tipos: ${tipos.join(", ")}.`);
 }
 
 // ---- Renderização da tabela -------------------------------------------------
@@ -210,8 +252,7 @@ function preencherSelect(id, valores, rotuloVazio) {
   sel.innerHTML = `<option value="">${rotuloVazio}</option>`;
   for (const v of valores) {
     const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
+    opt.value = v; opt.textContent = v;
     sel.appendChild(opt);
   }
 }
@@ -235,11 +276,9 @@ function dadosFiltrados() {
   const { coluna, asc } = ordemAtual;
   linhas.sort((a, b) => {
     let va = a[coluna], vb = b[coluna];
-    if (coluna === "total") { va = a.total; vb = b.total; }
     if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase(); }
     if (va < vb) return asc ? -1 : 1;
     if (va > vb) return asc ? 1 : -1;
-    // desempate estável por total desc e depois nome
     if (b.total !== a.total) return b.total - a.total;
     return a.nome.localeCompare(b.nome);
   });
@@ -250,7 +289,6 @@ function renderTabela() {
   const linhas = dadosFiltrados();
   const tbody = document.querySelector("#tabela tbody");
   tbody.innerHTML = "";
-
   linhas.forEach((d, idx) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -270,17 +308,13 @@ function renderTabela() {
     tdBtn.appendChild(btn);
     tbody.appendChild(tr);
   });
-
   document.getElementById("resultCount").textContent =
     `${linhas.length} registros • ${linhas.reduce((s, d) => s + d.total, 0)} projetos`;
 }
 
 function alternarProjetos(tr, d) {
   const proxima = tr.nextElementSibling;
-  if (proxima && proxima.classList.contains("projetos-row")) {
-    proxima.remove();
-    return;
-  }
+  if (proxima && proxima.classList.contains("projetos-row")) { proxima.remove(); return; }
   const row = document.createElement("tr");
   row.className = "projetos-row";
   const td = document.createElement("td");
@@ -291,75 +325,61 @@ function alternarProjetos(tr, d) {
     const li = document.createElement("li");
     li.innerHTML =
       `<span class="pj-titulo">` +
-      `<a href="${FICHA_URL(p.id)}" target="_blank" rel="noopener">${p.tipo} ${p.numero}/${p.ano}</a>` +
-      `</span> <small>(apresentado em ${escapar((p.dataApresentacao || "").slice(0, 10))})</small>` +
+      `<a href="${FICHA_URL(p.id)}" target="_blank" rel="noopener">${p.tipo} ${p.numero}/${p.ano}</a></span> ` +
+      `<small>(apresentado em ${escapar((p.dataApresentacao || "").slice(0, 10))})</small>` +
       `<div class="pj-ementa">${escapar(p.ementa)}</div>`;
     ol.appendChild(li);
   }
-  td.appendChild(ol);
-  row.appendChild(td);
-  tr.after(row);
+  td.appendChild(ol); row.appendChild(td); tr.after(row);
 }
 
 function escapar(s) {
   return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ---- Exportar / importar Excel ---------------------------------------------
 
 function exportarXlsx() {
   if (!DADOS.length) return;
-
   const ranking = DADOS.map((d) => ({
-    Deputado: d.nome,
-    Partido: d.partido,
-    UF: d.uf,
+    Deputado: d.nome, Partido: d.partido, UF: d.uf,
     Legislatura: LEGISLATURAS[d.legislatura].rotulo,
     "Projetos convertidos em lei": d.total,
-    Leg: d.legislatura,
-    idDeputado: d.depId,
+    Leg: d.legislatura, idDeputado: d.depId,
   }));
-
   const projetos = [];
-  for (const d of DADOS) {
-    for (const p of d.projetos) {
-      projetos.push({
-        Deputado: d.nome,
-        Partido: d.partido,
-        UF: d.uf,
-        Legislatura: LEGISLATURAS[d.legislatura].rotulo,
-        Tipo: p.tipo,
-        Numero: p.numero,
-        Ano: p.ano,
-        "Data apresentacao": (p.dataApresentacao || "").slice(0, 10),
-        Ementa: p.ementa,
-        Link: FICHA_URL(p.id),
-        idProposicao: p.id,
-        Leg: d.legislatura,
-        idDeputado: d.depId,
-      });
-    }
+  for (const d of DADOS) for (const p of d.projetos) {
+    projetos.push({
+      Deputado: d.nome, Partido: d.partido, UF: d.uf,
+      Legislatura: LEGISLATURAS[d.legislatura].rotulo,
+      Tipo: p.tipo, Numero: p.numero, Ano: p.ano,
+      "Data apresentacao": (p.dataApresentacao || "").slice(0, 10),
+      Ementa: p.ementa, Link: FICHA_URL(p.id),
+      idProposicao: p.id, Leg: d.legislatura, idDeputado: d.depId,
+    });
   }
-
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ranking), "Ranking");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projetos), "Projetos");
-
-  const hoje = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `deputados-projetos-em-lei-${hoje}.xlsx`);
+  XLSX.writeFile(wb, `deputados-projetos-em-lei-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function importarXlsx(file) {
+  mostrarProgresso(true);
+  setFase(`Importando "${file.name}"...`);
+  setProgresso(0, 1);
   const reader = new FileReader();
+  reader.onprogress = (e) => { if (e.lengthComputable) setProgresso(e.loaded, e.total); };
   reader.onload = (e) => {
     try {
       const wb = XLSX.read(e.target.result, { type: "array" });
       reconstruirDeXlsx(wb);
+      mostrarProgresso(false);
       finalizarRender();
       setStatus(`Importado de "${file.name}": ${DADOS.length} registros.`);
     } catch (err) {
+      mostrarProgresso(false);
       setStatus("Erro ao importar o arquivo: " + err.message, true);
     }
   };
@@ -371,47 +391,35 @@ function reconstruirDeXlsx(wb) {
   const rankingSheet = wb.Sheets["Ranking"];
   const projetosSheet = wb.Sheets["Projetos"];
   if (!rankingSheet) throw new Error('Planilha "Ranking" não encontrada.');
-
   const ranking = XLSX.utils.sheet_to_json(rankingSheet);
   const projetos = projetosSheet ? XLSX.utils.sheet_to_json(projetosSheet) : [];
 
-  // Mapeia o rótulo da legislatura de volta para a chave "56"/"57".
   const rotuloParaChave = {};
   for (const [chave, info] of Object.entries(LEGISLATURAS)) rotuloParaChave[info.rotulo] = chave;
   const legDe = (r) =>
     r.Leg != null ? String(r.Leg) : rotuloParaChave[r.Legislatura] || String(r.Legislatura);
 
-  // Agrupa os projetos por (idDeputado | legislatura).
   const projetosPorChave = new Map();
   for (const r of projetos) {
     const chave = `${r.idDeputado}|${legDe(r)}`;
     if (!projetosPorChave.has(chave)) projetosPorChave.set(chave, []);
     projetosPorChave.get(chave).push({
-      id: r.idProposicao,
-      tipo: r.Tipo,
-      numero: r.Numero,
-      ano: r.Ano,
-      ementa: r.Ementa || "",
-      dataApresentacao: r["Data apresentacao"] || "",
+      id: r.idProposicao, tipo: r.Tipo, numero: r.Numero, ano: r.Ano,
+      ementa: r.Ementa || "", dataApresentacao: r["Data apresentacao"] || "",
     });
   }
-
   DADOS = ranking.map((r) => {
     const leg = legDe(r);
     const projetosLinha = projetosPorChave.get(`${r.idDeputado}|${leg}`) || [];
     return {
-      depId: r.idDeputado,
-      nome: r.Deputado,
-      partido: r.Partido || "",
-      uf: r.UF || "",
-      legislatura: leg,
-      total: Number(r["Projetos convertidos em lei"]) || projetosLinha.length,
+      depId: r.idDeputado, nome: r.Deputado, partido: r.Partido || "", uf: r.UF || "",
+      legislatura: leg, total: Number(r["Projetos convertidos em lei"]) || projetosLinha.length,
       projetos: projetosLinha,
     };
   });
 }
 
-// ---- UI / eventos -----------------------------------------------------------
+// ---- UI / progresso ---------------------------------------------------------
 
 function getSelecionados(classe) {
   return [...document.querySelectorAll(`.${classe}:checked`)].map((c) => c.value);
@@ -423,15 +431,30 @@ function setStatus(msg, erro = false) {
   el.classList.toggle("error", erro);
 }
 
+let faseAtual = "";
+function setFase(texto) { faseAtual = texto; document.getElementById("progressText").textContent = texto; }
+
 function mostrarProgresso(mostrar) {
   document.getElementById("progressWrap").hidden = !mostrar;
-  if (mostrar) atualizarProgresso(0, 1);
+  if (mostrar) { document.getElementById("progressFill").style.width = "0%"; }
 }
 
-function atualizarProgresso(feitos, total) {
+function setProgresso(feitos, total) {
   const pct = total ? Math.round((feitos / total) * 100) : 0;
   document.getElementById("progressFill").style.width = pct + "%";
-  document.getElementById("progressText").textContent = `${feitos}/${total} (${pct}%)`;
+  document.getElementById("progressText").textContent = `${faseAtual} ${feitos}/${total} (${pct}%)`;
+}
+
+function setProgressoBytes(recebido, total) {
+  const mb = (b) => (b / 1048576).toFixed(1);
+  if (total) {
+    const pct = Math.round((recebido / total) * 100);
+    document.getElementById("progressFill").style.width = pct + "%";
+    document.getElementById("progressText").textContent =
+      `${faseAtual} ${mb(recebido)}/${mb(total)} MB (${pct}%)`;
+  } else {
+    document.getElementById("progressText").textContent = `${faseAtual} ${mb(recebido)} MB`;
+  }
 }
 
 function finalizarRender() {
@@ -450,6 +473,9 @@ function configurarEventos() {
 
     const btn = document.getElementById("btnColetar");
     btn.disabled = true;
+    setStatus("");
+    mostrarProgresso(true);
+    setFase("Iniciando...");
     try {
       await coletar(legs, tipos);
       finalizarRender();
@@ -480,9 +506,7 @@ function configurarEventos() {
       if (coluna === "rank") return;
       if (ordemAtual.coluna === coluna) ordemAtual.asc = !ordemAtual.asc;
       else ordemAtual = { coluna, asc: coluna !== "total" };
-      document.querySelectorAll("#tabela th").forEach((h) =>
-        h.classList.remove("sorted-asc", "sorted-desc")
-      );
+      document.querySelectorAll("#tabela th").forEach((h) => h.classList.remove("sorted-asc", "sorted-desc"));
       th.classList.add(ordemAtual.asc ? "sorted-asc" : "sorted-desc");
       renderTabela();
     });
