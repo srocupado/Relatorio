@@ -102,7 +102,7 @@ async function fetchComRetry(url, tentativas = 5, esperaInicial = 1000) {
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const CONCORRENCIA_API = 4; // mais suave para redes corporativas em etapas com muitas chamadas
-const CONCORRENCIA_CONDICAO = 10; // /historico é HTTP/2 e leve; cache persistente cobre re-runs
+const CONCORRENCIA_CONDICAO = 16; // /historico é HTTP/2 e leve; cache persistente cobre re-runs
 
 /** Lê um arquivo local (File) como texto, mostrando o progresso de leitura, e faz JSON.parse. */
 function lerJsonLocalComProgresso(file, onBytes) {
@@ -196,7 +196,7 @@ function filtrarProjetosLei(arquivo, tipos) {
  * Retry curto (falha vira "—" rápido, sem travar a coleta em redes instáveis). */
 async function fetchHistorico(idDeputado) {
   // OBS: o endpoint /historico NÃO aceita o parâmetro 'itens' (retorna 400).
-  const resp = await fetchComRetry(`${API}/deputados/${idDeputado}/historico`, 3, 500);
+  const resp = await fetchComRetry(`${API}/deputados/${idDeputado}/historico`, 2, 400);
   const json = await resp.json();
   return json.dados || [];
 }
