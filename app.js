@@ -510,14 +510,36 @@ function renderTabela() {
   renderGrafico(linhas);
 }
 
-// Paleta (tons do tema teal + cores de apoio) para as 10 fatias da pizza.
+// Paleta (tons do tema teal + cores de apoio) para as fatias do donut.
 const CORES_PIZZA = [
   "#1fa5a5", "#26c9c9", "#00A859", "#3ad97d", "#6eaaff",
   "#f0c040", "#f08a40", "#f05454", "#b06ef0", "#9aa7ab",
 ];
 let chartPizza = null;
 
-/** Desenha a pizza com o Top 10 (por projetos) dos dados atualmente filtrados. */
+// Plugin: desenha o total no centro do donut (padrão "NN / TOTAL").
+const pluginTotalCentral = {
+  id: "totalCentral",
+  afterDraw(chart) {
+    const ds = chart.data.datasets[0];
+    if (!ds) return;
+    const total = ds.data.reduce((a, b) => a + b, 0);
+    const { ctx, chartArea } = chart;
+    const x = (chartArea.left + chartArea.right) / 2;
+    const y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "#e8ecec";
+    ctx.font = '700 30px "DM Sans", sans-serif';
+    ctx.fillText(String(total), x, y - 7);
+    ctx.fillStyle = "#8da3a8";
+    ctx.font = '600 11px "DM Sans", sans-serif';
+    ctx.fillText("TOTAL", x, y + 17);
+    ctx.restore();
+  },
+};
+
+/** Desenha o donut com o Top 10 (por projetos) dos dados atualmente filtrados. */
 function renderGrafico(linhas) {
   if (typeof Chart === "undefined") return; // lib não carregada
   const top = [...linhas].sort((a, b) => b.total - a.total).filter((d) => d.total > 0).slice(0, 10);
@@ -537,16 +559,38 @@ function renderGrafico(linhas) {
 
   if (chartPizza) chartPizza.destroy();
   chartPizza = new Chart(document.getElementById("grafico"), {
-    type: "pie",
-    data: { labels, datasets: [{ data: valores, backgroundColor: CORES_PIZZA, borderColor: "#0e1c1f", borderWidth: 1 }] },
+    type: "doughnut",
+    data: { labels, datasets: [{ data: valores, backgroundColor: CORES_PIZZA, borderColor: "#0e1c1f", borderWidth: 2 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      cutout: "68%",
+      layout: { padding: 4 },
       plugins: {
-        legend: { position: "bottom", labels: { color: "#e8ecec", font: { size: 11 }, boxWidth: 12 } },
+        legend: {
+          position: "right",
+          labels: {
+            color: "#e8ecec",
+            usePointStyle: true,
+            pointStyle: "circle",
+            boxWidth: 8,
+            padding: 10,
+            font: { size: 12 },
+            generateLabels(chart) {
+              const d = chart.data;
+              return d.labels.map((label, i) => ({
+                text: `${label}   ${d.datasets[0].data[i]}`,
+                fillStyle: d.datasets[0].backgroundColor[i],
+                strokeStyle: d.datasets[0].backgroundColor[i],
+                index: i,
+              }));
+            },
+          },
+        },
         tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed} projeto(s)` } },
       },
     },
+    plugins: [pluginTotalCentral],
   });
 }
 
