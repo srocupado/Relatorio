@@ -37,6 +37,14 @@ function salvarBancadas() {
 }
 let selecaoBancada = new Set(); // depIds marcados no editor
 
+// Cache PERSISTENTE do roster (lista de deputados) por legislatura: leg -> [{id,nome,partido,uf}].
+const ROSTER_STORE_KEY = "rosters_v1";
+let ROSTERS = {};
+try { ROSTERS = JSON.parse(localStorage.getItem(ROSTER_STORE_KEY) || "{}"); } catch (e) {}
+function salvarRosters() {
+  try { localStorage.setItem(ROSTER_STORE_KEY, JSON.stringify(ROSTERS)); } catch (e) {}
+}
+
 /** Condição do deputado em cada legislatura que ele teve (53–57), a partir do histórico. */
 function condicoesTodasLegs(hist) {
   const o = {};
@@ -143,14 +151,16 @@ function classificarPorLegislatura(dataApresentacao) {
   return null;
 }
 
-/** Busca todos os deputados de uma legislatura (paginado), com progresso. */
+/** Busca todos os deputados de uma legislatura (paginado), com progresso.
+ * Tolerante a falhas: nunca lança; devolve { deputados, completo }. */
 async function fetchDeputados(idLegislatura, onProgresso) {
   const deputados = [];
-  let pagina = 1, total = 0;
+  let pagina = 1, total = 0, completo = true;
   while (true) {
     const url = `${API}/deputados?idLegislatura=${idLegislatura}&ordem=ASC&ordenarPor=nome&itens=100&pagina=${pagina}`;
-    const resp = await fetchComRetry(url);
-    const json = await resp.json();
+    let resp, json;
+    try { resp = await fetchComRetry(url, 5, 800); json = await resp.json(); }
+    catch (e) { completo = false; break; }
     for (const d of json.dados) {
       deputados.push({ id: d.id, nome: d.nome, partido: d.siglaPartido || "", uf: d.siglaUf || "" });
     }
@@ -159,7 +169,7 @@ async function fetchDeputados(idLegislatura, onProgresso) {
     if (pagina * 100 >= total || json.dados.length === 0) break;
     pagina++;
   }
-  return deputados;
+  return { deputados, completo };
 }
 
 /** Lê um arquivo em massa e devolve os PL/PLP (tipos) que viraram norma jurídica. */
@@ -243,12 +253,22 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   }
 
   // 2. Buscar os deputados de cada legislatura (nome/partido/UF + para mostrar zeros).
+  // Usa cache persistente por legislatura; tolerante a falhas (não aborta a coleta).
   const rosterPorLeg = {};
   const infoDep = new Map();
+  let falhasRoster = 0;
   for (let i = 0; i < legsSelecionadas.length; i++) {
     const leg = legsSelecionadas[i];
-    setFase(`Buscando deputados da ${LEGISLATURAS[leg].rotulo}...`);
-    const lista = await fetchDeputados(leg, (f, t) => setProgresso(f, t));
+    let lista;
+    if (ROSTERS[leg] && ROSTERS[leg].length) {
+      lista = ROSTERS[leg];
+    } else {
+      setFase(`Buscando deputados da ${LEGISLATURAS[leg].rotulo}...`);
+      const r = await fetchDeputados(leg, (f, t) => setProgresso(f, t));
+      lista = r.deputados;
+      if (r.completo && lista.length) { ROSTERS[leg] = lista; salvarRosters(); }
+      else falhasRoster++;
+    }
     rosterPorLeg[leg] = new Set(lista.map((d) => d.id));
     for (const d of lista) if (!infoDep.has(d.id)) infoDep.set(d.id, d);
   }
@@ -326,6 +346,7 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   mostrarProgresso(false);
   let msg = `Coleta concluída: ${leis.length} projetos convertidos em lei • ` +
     `${DADOS.length} registros (deputado × legislatura). Tipos: ${tipos.join(", ")}.`;
+  if (falhasRoster) msg += ` ⚠️ ${falhasRoster} legislatura(s) com lista de deputados incompleta (falha de rede) — clique em Processar de novo para completar.`;
   if (falhasAutores) msg += ` ⚠️ ${falhasAutores} projeto(s) sem autores (falha de rede).`;
   if (falhasCondicao) msg += ` ⚠️ ${falhasCondicao} deputado(s) com condição indefinida (falha de rede) — clique em Processar de novo se quiser completar.`;
   setStatus(msg);
@@ -963,9 +984,9 @@ function configurarEventos() {
   document.getElementById("btnExportar").addEventListener("click", exportarXlsx);
   document.getElementById("btnExportarDb").addEventListener("click", exportarSqlite);
   document.getElementById("btnLimparCache").addEventListener("click", () => {
-    CONDICOES = {};
-    try { localStorage.removeItem(COND_STORE_KEY); } catch (e) {}
-    setStatus("Cache de condição (titular/suplente) apagado. O próximo Processar buscará tudo de novo.");
+    CONDICOES = {}; ROSTERS = {};
+    try { localStorage.removeItem(COND_STORE_KEY); localStorage.removeItem(ROSTER_STORE_KEY); } catch (e) {}
+    setStatus("Cache de deputados e de condição (titular/suplente) apagado. O próximo Processar buscará tudo de novo.");
   });
   document.getElementById("fileImportar").addEventListener("change", (e) => {
     if (e.target.files[0]) importarXlsx(e.target.files[0]);
