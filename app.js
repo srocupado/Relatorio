@@ -517,24 +517,35 @@ const CORES_PIZZA = [
 ];
 let chartPizza = null;
 
-// Plugin: desenha o total no centro do donut (padrão "NN / TOTAL").
-const pluginTotalCentral = {
-  id: "totalCentral",
+// Plugin: escreve o percentual em cada fatia do donut.
+const pluginPercentFatias = {
+  id: "percentFatias",
   afterDraw(chart) {
     const ds = chart.data.datasets[0];
     if (!ds) return;
     const total = ds.data.reduce((a, b) => a + b, 0);
-    const { ctx, chartArea } = chart;
-    const x = (chartArea.left + chartArea.right) / 2;
-    const y = (chartArea.top + chartArea.bottom) / 2;
+    if (!total) return;
+    const meta = chart.getDatasetMeta(0);
+    const ctx = chart.ctx;
     ctx.save();
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = "#e8ecec";
-    ctx.font = '700 30px "DM Sans", sans-serif';
-    ctx.fillText(String(total), x, y - 7);
-    ctx.fillStyle = "#8da3a8";
-    ctx.font = '600 11px "DM Sans", sans-serif';
-    ctx.fillText("TOTAL", x, y + 17);
+    ctx.font = '700 12px "DM Sans", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    meta.data.forEach((arc, i) => {
+      const pct = Math.round((ds.data[i] / total) * 100);
+      if (pct < 1) return;
+      const { startAngle, endAngle, innerRadius, outerRadius, x, y } =
+        arc.getProps(["startAngle", "endAngle", "innerRadius", "outerRadius", "x", "y"], true);
+      const mid = (startAngle + endAngle) / 2;
+      const r = (innerRadius + outerRadius) / 2;
+      const px = x + Math.cos(mid) * r;
+      const py = y + Math.sin(mid) * r;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.strokeText(pct + "%", px, py);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(pct + "%", px, py);
+    });
     ctx.restore();
   },
 };
@@ -564,13 +575,13 @@ function renderGrafico(linhas) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: "68%",
+      cutout: "62%",
       layout: { padding: 4 },
       plugins: {
         legend: {
           position: "right",
           labels: {
-            color: "#e8ecec",
+            color: "#ffffff",
             usePointStyle: true,
             pointStyle: "circle",
             boxWidth: 8,
@@ -582,15 +593,25 @@ function renderGrafico(linhas) {
                 text: `${label}   ${d.datasets[0].data[i]}`,
                 fillStyle: d.datasets[0].backgroundColor[i],
                 strokeStyle: d.datasets[0].backgroundColor[i],
+                fontColor: "#ffffff",
                 index: i,
               }));
             },
           },
         },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed} projeto(s)` } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const arr = ctx.dataset.data;
+              const total = arr.reduce((a, b) => a + b, 0);
+              const pct = total ? Math.round((ctx.parsed / total) * 100) : 0;
+              return ` ${ctx.label}: ${ctx.parsed} projeto(s) (${pct}%)`;
+            },
+          },
+        },
       },
     },
-    plugins: [pluginTotalCentral],
+    plugins: [pluginPercentFatias],
   });
 }
 
