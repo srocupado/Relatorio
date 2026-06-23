@@ -19,7 +19,24 @@ const API = "https://dadosabertos.camara.leg.br/api/v2";
 const ID_SITUACAO_LEI = "1140"; // "Transformado em Norma Jurídica" (no ultimoStatus do arquivo)
 const CONCORRENCIA = 6;
 let ARQUIVOS_SELECIONADOS = []; // File[]
-const CACHE_HISTORICO = new Map(); // depId -> histórico (reaproveitado entre reprocessamentos)
+
+// Cache PERSISTENTE da condição eleitoral (localStorage): depId -> { leg: "Titular"/... }.
+// Condição é praticamente fixa, então após a 1ª busca vira instantâneo (mesmo reabrindo).
+const COND_STORE_KEY = "condicoes_v1";
+let CONDICOES = {};
+try { CONDICOES = JSON.parse(localStorage.getItem(COND_STORE_KEY) || "{}"); } catch (e) {}
+function salvarCondicoes() {
+  try { localStorage.setItem(COND_STORE_KEY, JSON.stringify(CONDICOES)); } catch (e) {}
+}
+/** Condição do deputado em cada legislatura que ele teve (53–57), a partir do histórico. */
+function condicoesTodasLegs(hist) {
+  const o = {};
+  for (const leg of ["53", "54", "55", "56", "57"]) {
+    const c = condicaoDaLegislatura(hist, leg);
+    if (c && c !== "—") o[leg] = c;
+  }
+  return o;
+}
 
 // Faixas de data de apresentação + anos de arquivo a baixar por legislatura.
 const LEGISLATURAS = {
@@ -68,6 +85,7 @@ async function fetchComRetry(url, tentativas = 5, esperaInicial = 1000) {
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const CONCORRENCIA_API = 4; // mais suave para redes corporativas em etapas com muitas chamadas
+const CONCORRENCIA_CONDICAO = 10; // /historico é HTTP/2 e leve; cache persistente cobre re-runs
 
 /** Lê um arquivo local (File) como texto, mostrando o progresso de leitura, e faz JSON.parse. */
 function lerJsonLocalComProgresso(file, onBytes) {
@@ -253,23 +271,27 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   if (usarCondicao) {
     const idsCondicao = new Set(infoDep.keys());
     for (const k of buckets.keys()) idsCondicao.add(parseInt(k.split("|")[0], 10));
-    setFase("Buscando condição (titular/suplente) dos deputados...");
-    await poolDeTarefas(
-      [...idsCondicao],
-      CONCORRENCIA_API,
-      async (depId) => {
-        // Usa o cache da sessão: reprocessar só busca os que ainda faltam.
-        if (!CACHE_HISTORICO.has(depId)) {
-          try { CACHE_HISTORICO.set(depId, await fetchHistorico(depId)); }
-          catch (e) { falhasCondicao++; return; } // falha não aborta; condição fica "—"
-        }
-        const hist = CACHE_HISTORICO.get(depId);
-        for (const leg of legsSelecionadas) {
-          condicaoPorChave.set(`${depId}|${leg}`, condicaoDaLegislatura(hist, leg));
-        }
-      },
-      (f, t) => setProgresso(f, t)
-    );
+    const todos = [...idsCondicao];
+    // Só busca quem ainda não está no cache persistente (1 fetch por deputado, para sempre).
+    const faltam = todos.filter((id) => CONDICOES[id] === undefined);
+    setFase(`Buscando condição (titular/suplente) — ${faltam.length} novos de ${todos.length}...`);
+    if (faltam.length) {
+      await poolDeTarefas(
+        faltam,
+        CONCORRENCIA_CONDICAO,
+        async (depId) => {
+          try { CONDICOES[depId] = condicoesTodasLegs(await fetchHistorico(depId)); }
+          catch (e) { falhasCondicao++; } // falha não aborta; tenta de novo num próximo Processar
+        },
+        (f, t) => setProgresso(f, t)
+      );
+      salvarCondicoes();
+    }
+    for (const depId of todos) {
+      for (const leg of legsSelecionadas) {
+        condicaoPorChave.set(`${depId}|${leg}`, (CONDICOES[depId] || {})[leg] || "—");
+      }
+    }
   }
 
   // 4. Montar DADOS: todo deputado do roster (mostra zeros) + autores fora do roster.
@@ -717,6 +739,11 @@ function configurarEventos() {
 
   document.getElementById("btnExportar").addEventListener("click", exportarXlsx);
   document.getElementById("btnExportarDb").addEventListener("click", exportarSqlite);
+  document.getElementById("btnLimparCache").addEventListener("click", () => {
+    CONDICOES = {};
+    try { localStorage.removeItem(COND_STORE_KEY); } catch (e) {}
+    setStatus("Cache de condição (titular/suplente) apagado. O próximo Processar buscará tudo de novo.");
+  });
   document.getElementById("fileImportar").addEventListener("change", (e) => {
     if (e.target.files[0]) importarXlsx(e.target.files[0]);
     e.target.value = "";

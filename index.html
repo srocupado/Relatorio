@@ -7,13 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="vendor/sql-wasm.js"></script>
 </head>
 <body>
   <header>
-    <h1>Deputados com projetos convertidos em lei <span class="versao">v5 · condição resiliente</span></h1>
+    <h1>Deputados com projetos convertidos em lei <span class="versao">v6 · condição em cache</span></h1>
     <p class="sub">
       Levantamento com os
       <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
@@ -95,7 +95,7 @@
       <label class="chk-inline condicao-opt">
         <input type="checkbox" id="chkCondicao" checked />
         Identificar condição <strong>titular/suplente</strong> de cada deputado
-        (busca extra por deputado na API — deixa a coleta mais lenta)
+        (busca extra na API só na 1ª vez; depois fica em cache e é rápido)
       </label>
 
       <h2>3. Selecione os arquivos baixados e processe</h2>
@@ -120,6 +120,7 @@
           ⬆ Importar SQLite
           <input type="file" id="fileImportarDb" accept=".db,.sqlite,.sqlite3" hidden />
         </label>
+        <button id="btnLimparCache" title="Apaga o cache local de titular/suplente (use se a composição da legislatura atual mudou)">↻ Limpar cache de condição</button>
       </div>
       <p class="hint" id="arquivosSelecionados"></p>
       <p class="hint" id="statusArquivos"></p>
@@ -182,6 +183,6 @@
     </p>
   </footer>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
