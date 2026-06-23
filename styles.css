@@ -75,6 +75,28 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px; }
 .hint { font-size: 0.85rem; color: var(--text-dim); margin: 6px 0 12px; }
 .hint.ok { color: var(--verde-claro); }
 .hint.faltando { color: var(--amarelo); }
+
+.bancada-box {
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.bancada-box summary { cursor: pointer; font-weight: 600; color: var(--accent-light); }
+.bancada-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.bancada-controls input[type="text"], .bancada-box input[type="search"], .bancada-controls select {
+  font-family: inherit; padding: 7px 10px; border: 1px solid var(--borda);
+  border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.9rem;
+}
+.bancada-box input[type="search"] { width: 100%; margin-bottom: 8px; }
+button.ghost { border-color: var(--borda); color: var(--text-dim); }
+.bancada-lista {
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--borda); border-radius: 6px; padding: 6px 10px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2px 14px;
+}
+.bancada-item { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; padding: 2px 0; cursor: pointer; }
 .hint code, p code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; color: var(--accent-light); }
 
 .links-arquivos { list-style: none; padding: 0; margin: 0 0 8px; }

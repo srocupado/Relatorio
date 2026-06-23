@@ -7,13 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="vendor/sql-wasm.js"></script>
 </head>
 <body>
   <header>
-    <h1>Deputados com projetos convertidos em lei <span class="versao">v6 · condição em cache</span></h1>
+    <h1>Deputados com projetos convertidos em lei <span class="versao">v7 · bancada fictícia</span></h1>
     <p class="sub">
       Levantamento com os
       <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
@@ -135,6 +135,25 @@
     <section class="panel" id="results" hidden>
       <h2>4. Resultados</h2>
 
+      <details class="bancada-box" id="bancadaBox">
+        <summary>🏛️ Bancada fictícia (partido personalizado)</summary>
+        <p class="hint">
+          Monte uma bancada fixa escolhendo os deputados; a análise passa a ignorar as trocas de
+          partido. As bancadas ficam salvas no navegador e aparecem no filtro "bancadas" e nos
+          arquivos exportados.
+        </p>
+        <div class="bancada-controls">
+          <input type="text" id="bancadaNome" placeholder="Nome da bancada fictícia" />
+          <button id="btnSalvarBancada">💾 Salvar / atualizar</button>
+          <select id="bancadaExistente"><option value="">— carregar bancada salva —</option></select>
+          <button id="btnExcluirBancada">🗑 Excluir bancada</button>
+          <button id="btnLimparSelecao" class="ghost">Limpar seleção</button>
+          <span class="hint" id="bancadaContador"></span>
+        </div>
+        <input type="search" id="bancadaBusca" placeholder="Filtrar lista de deputados..." />
+        <div class="bancada-lista" id="bancadaLista"></div>
+      </details>
+
       <div class="filters">
         <input type="search" id="filtroNome" placeholder="Buscar deputado..." />
         <select id="filtroLeg">
@@ -152,6 +171,7 @@
           <option value="titular">Titulares (e efetivados)</option>
           <option value="suplente">Suplentes</option>
         </select>
+        <select id="filtroBancada"><option value="">Todas as bancadas</option></select>
         <label class="chk-inline"><input type="checkbox" id="filtroComLei" /> Só com ≥ 1 projeto</label>
         <span class="result-count" id="resultCount"></span>
       </div>
@@ -183,6 +203,6 @@
     </p>
   </footer>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

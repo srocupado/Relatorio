@@ -28,6 +28,15 @@ try { CONDICOES = JSON.parse(localStorage.getItem(COND_STORE_KEY) || "{}"); } ca
 function salvarCondicoes() {
   try { localStorage.setItem(COND_STORE_KEY, JSON.stringify(CONDICOES)); } catch (e) {}
 }
+// Bancadas fictícias (partidos personalizados): nome -> [depId,...], persistidas no navegador.
+const BANCADA_STORE_KEY = "bancadas_v1";
+let BANCADAS = {};
+try { BANCADAS = JSON.parse(localStorage.getItem(BANCADA_STORE_KEY) || "{}"); } catch (e) {}
+function salvarBancadas() {
+  try { localStorage.setItem(BANCADA_STORE_KEY, JSON.stringify(BANCADAS)); } catch (e) {}
+}
+let selecaoBancada = new Set(); // depIds marcados no editor
+
 /** Condição do deputado em cada legislatura que ele teve (53–57), a partir do histórico. */
 function condicoesTodasLegs(hist) {
   const o = {};
@@ -333,12 +342,108 @@ function popularFiltros() {
 
 function preencherSelect(id, valores, rotuloVazio) {
   const sel = document.getElementById(id);
+  const atual = sel.value;
   sel.innerHTML = `<option value="">${rotuloVazio}</option>`;
   for (const v of valores) {
     const opt = document.createElement("option");
     opt.value = v; opt.textContent = v;
     sel.appendChild(opt);
   }
+  if ([...sel.options].some((o) => o.value === atual)) sel.value = atual;
+}
+
+// ---- Bancadas fictícias -----------------------------------------------------
+
+/** Deputados únicos (por id) presentes nos dados, para montar a bancada. */
+function deputadosUnicos() {
+  const m = new Map();
+  for (const d of DADOS) if (!m.has(d.depId)) {
+    m.set(d.depId, { depId: d.depId, nome: d.nome, partido: d.partido, uf: d.uf });
+  }
+  return [...m.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+/** Mapa depId -> [nomes das bancadas a que pertence]. */
+function bancadasPorDep() {
+  const m = new Map();
+  for (const [nome, ids] of Object.entries(BANCADAS)) {
+    for (const id of ids) {
+      if (!m.has(id)) m.set(id, []);
+      m.get(id).push(nome);
+    }
+  }
+  return m;
+}
+
+function atualizarSelectsBancada() {
+  const nomes = Object.keys(BANCADAS).sort((a, b) => a.localeCompare(b));
+  preencherSelect("filtroBancada", nomes, "Todas as bancadas");
+  preencherSelect("bancadaExistente", nomes, "— carregar bancada salva —");
+}
+
+function renderBancadaLista() {
+  const busca = document.getElementById("bancadaBusca").value.trim().toLowerCase();
+  const cont = document.getElementById("bancadaLista");
+  cont.innerHTML = "";
+  const lista = deputadosUnicos().filter((d) => !busca || d.nome.toLowerCase().includes(busca));
+  for (const d of lista) {
+    const lab = document.createElement("label");
+    lab.className = "bancada-item";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = selecaoBancada.has(d.depId);
+    cb.addEventListener("change", () => {
+      if (cb.checked) selecaoBancada.add(d.depId); else selecaoBancada.delete(d.depId);
+      atualizarContadorBancada();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(` ${d.nome} (${d.partido || "—"}/${d.uf || "—"})`));
+    cont.appendChild(lab);
+  }
+  atualizarContadorBancada();
+}
+
+function atualizarContadorBancada() {
+  document.getElementById("bancadaContador").textContent =
+    `${selecaoBancada.size} deputado(s) selecionado(s)`;
+}
+
+function carregarBancada(nome) {
+  if (!nome || !BANCADAS[nome]) { selecaoBancada = new Set(); }
+  else { selecaoBancada = new Set(BANCADAS[nome]); document.getElementById("bancadaNome").value = nome; }
+  renderBancadaLista();
+}
+
+function salvarBancadaAtual() {
+  const nome = document.getElementById("bancadaNome").value.trim();
+  if (!nome) return setStatus("Dê um nome à bancada fictícia antes de salvar.", true);
+  if (selecaoBancada.size === 0) return setStatus("Selecione ao menos um deputado para a bancada.", true);
+  BANCADAS[nome] = [...selecaoBancada];
+  salvarBancadas();
+  atualizarSelectsBancada();
+  document.getElementById("filtroBancada").value = nome;
+  renderTabela();
+  setStatus(`Bancada "${nome}" salva com ${BANCADAS[nome].length} deputado(s).`);
+}
+
+function excluirBancada() {
+  const sel = document.getElementById("bancadaExistente").value ||
+    document.getElementById("bancadaNome").value.trim();
+  if (!sel || !BANCADAS[sel]) return setStatus("Selecione uma bancada salva para excluir.", true);
+  if (!confirm(`Excluir a bancada fictícia "${sel}"?`)) return;
+  delete BANCADAS[sel];
+  salvarBancadas();
+  selecaoBancada = new Set();
+  document.getElementById("bancadaNome").value = "";
+  atualizarSelectsBancada();
+  renderBancadaLista();
+  renderTabela();
+  setStatus(`Bancada "${sel}" excluída.`);
+}
+
+function prepararBancadas() {
+  atualizarSelectsBancada();
+  renderBancadaLista();
 }
 
 function dadosFiltrados() {
@@ -347,7 +452,9 @@ function dadosFiltrados() {
   const partido = document.getElementById("filtroPartido").value;
   const uf = document.getElementById("filtroUf").value;
   const condicao = document.getElementById("filtroCondicao").value;
+  const bancada = document.getElementById("filtroBancada").value;
   const soComLei = document.getElementById("filtroComLei").checked;
+  const membros = bancada && BANCADAS[bancada] ? new Set(BANCADAS[bancada]) : null;
 
   let linhas = DADOS.filter((d) => {
     if (nome && !d.nome.toLowerCase().includes(nome)) return false;
@@ -355,6 +462,7 @@ function dadosFiltrados() {
     if (partido && d.partido !== partido) return false;
     if (uf && d.uf !== uf) return false;
     if (condicao && grupoCondicao(d.condicao) !== condicao) return false;
+    if (membros && !membros.has(d.depId)) return false;
     if (soComLei && d.total === 0) return false;
     return true;
   });
@@ -395,8 +503,10 @@ function renderTabela() {
     tdBtn.appendChild(btn);
     tbody.appendChild(tr);
   });
+  const bancada = document.getElementById("filtroBancada").value;
+  const prefixo = bancada ? `Bancada "${bancada}": ` : "";
   document.getElementById("resultCount").textContent =
-    `${linhas.length} registros • ${linhas.reduce((s, d) => s + d.total, 0)} projetos`;
+    `${prefixo}${linhas.length} registros • ${linhas.reduce((s, d) => s + d.total, 0)} projetos`;
 }
 
 function alternarProjetos(tr, d) {
@@ -429,9 +539,12 @@ function escapar(s) {
 
 function exportarXlsx() {
   if (!DADOS.length) return;
+  const bpd = bancadasPorDep();
+  const banc = (id) => (bpd.get(id) || []).join("; ");
   const ranking = DADOS.map((d) => ({
     Deputado: d.nome, Partido: d.partido, UF: d.uf,
     "Condição": d.condicao || "—",
+    "Bancada(s) fictícia(s)": banc(d.depId),
     Legislatura: LEGISLATURAS[d.legislatura].rotulo,
     "Projetos convertidos em lei": d.total,
     Leg: d.legislatura, idDeputado: d.depId,
@@ -440,6 +553,7 @@ function exportarXlsx() {
   for (const d of DADOS) for (const p of d.projetos) {
     projetos.push({
       Deputado: d.nome, Partido: d.partido, UF: d.uf,
+      "Bancada(s) fictícia(s)": banc(d.depId),
       Legislatura: LEGISLATURAS[d.legislatura].rotulo,
       Tipo: p.tipo, Numero: p.numero, Ano: p.ano,
       "Data apresentacao": (p.dataApresentacao || "").slice(0, 10),
@@ -535,26 +649,28 @@ async function exportarSqlite() {
     db.run(`
       CREATE TABLE ranking (
         id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT, condicao TEXT,
-        legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER
+        legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER, bancada_ficticia TEXT
       );
       CREATE TABLE projetos (
         id_proposicao INTEGER, id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT,
         legislatura TEXT, legislatura_desc TEXT, tipo TEXT, numero INTEGER, ano INTEGER,
-        data_apresentacao TEXT, ementa TEXT, link TEXT
+        data_apresentacao TEXT, ementa TEXT, link TEXT, bancada_ficticia TEXT
       );`);
 
+    const bpd = bancadasPorDep();
+    const banc = (id) => (bpd.get(id) || []).join("; ");
     db.run("BEGIN");
-    const r = db.prepare("INSERT INTO ranking VALUES (?,?,?,?,?,?,?,?)");
+    const r = db.prepare("INSERT INTO ranking VALUES (?,?,?,?,?,?,?,?,?)");
     for (const d of DADOS) {
       r.run([d.depId, d.nome, d.partido, d.uf, d.condicao || "—",
-        d.legislatura, LEGISLATURAS[d.legislatura].rotulo, d.total]);
+        d.legislatura, LEGISLATURAS[d.legislatura].rotulo, d.total, banc(d.depId)]);
     }
     r.free();
-    const p = db.prepare("INSERT INTO projetos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    const p = db.prepare("INSERT INTO projetos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     for (const d of DADOS) for (const pj of d.projetos) {
       p.run([pj.id, d.depId, d.nome, d.partido, d.uf, d.legislatura,
         LEGISLATURAS[d.legislatura].rotulo, pj.tipo, pj.numero, pj.ano,
-        (pj.dataApresentacao || "").slice(0, 10), pj.ementa, FICHA_URL(pj.id)]);
+        (pj.dataApresentacao || "").slice(0, 10), pj.ementa, FICHA_URL(pj.id), banc(d.depId)]);
     }
     p.free();
     db.run("COMMIT");
@@ -657,6 +773,7 @@ function finalizarRender() {
   document.getElementById("btnExportar").disabled = DADOS.length === 0;
   document.getElementById("btnExportarDb").disabled = DADOS.length === 0;
   popularFiltros();
+  prepararBancadas();
   renderTabela();
 }
 
@@ -753,7 +870,18 @@ function configurarEventos() {
     e.target.value = "";
   });
 
-  ["filtroNome", "filtroLeg", "filtroPartido", "filtroUf", "filtroCondicao", "filtroComLei"].forEach((id) => {
+  // Bancadas fictícias
+  document.getElementById("btnSalvarBancada").addEventListener("click", salvarBancadaAtual);
+  document.getElementById("btnExcluirBancada").addEventListener("click", excluirBancada);
+  document.getElementById("btnLimparSelecao").addEventListener("click", () => {
+    selecaoBancada = new Set();
+    document.getElementById("bancadaNome").value = "";
+    renderBancadaLista();
+  });
+  document.getElementById("bancadaExistente").addEventListener("change", (e) => carregarBancada(e.target.value));
+  document.getElementById("bancadaBusca").addEventListener("input", renderBancadaLista);
+
+  ["filtroNome", "filtroLeg", "filtroPartido", "filtroUf", "filtroCondicao", "filtroBancada", "filtroComLei"].forEach((id) => {
     const el = document.getElementById(id);
     el.addEventListener("input", renderTabela);
     el.addEventListener("change", renderTabela);
