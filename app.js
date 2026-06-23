@@ -28,7 +28,7 @@ try { CONDICOES = JSON.parse(localStorage.getItem(COND_STORE_KEY) || "{}"); } ca
 function salvarCondicoes() {
   try { localStorage.setItem(COND_STORE_KEY, JSON.stringify(CONDICOES)); } catch (e) {}
 }
-// Bancadas fictícias (partidos personalizados): nome -> [depId,...], persistidas no navegador.
+// Bancadas fixas (partidos personalizados): nome -> [depId,...], persistidas no navegador.
 const BANCADA_STORE_KEY = "bancadas_v1";
 let BANCADAS = {};
 try { BANCADAS = JSON.parse(localStorage.getItem(BANCADA_STORE_KEY) || "{}"); } catch (e) {}
@@ -352,7 +352,7 @@ function preencherSelect(id, valores, rotuloVazio) {
   if ([...sel.options].some((o) => o.value === atual)) sel.value = atual;
 }
 
-// ---- Bancadas fictícias -----------------------------------------------------
+// ---- Bancadas fixas -----------------------------------------------------
 
 /** Deputados únicos (por id) presentes nos dados, para montar a bancada. */
 function deputadosUnicos() {
@@ -416,7 +416,7 @@ function carregarBancada(nome) {
 
 function salvarBancadaAtual() {
   const nome = document.getElementById("bancadaNome").value.trim();
-  if (!nome) return setStatus("Dê um nome à bancada fictícia antes de salvar.", true);
+  if (!nome) return setStatus("Dê um nome à bancada fixa antes de salvar.", true);
   if (selecaoBancada.size === 0) return setStatus("Selecione ao menos um deputado para a bancada.", true);
   BANCADAS[nome] = [...selecaoBancada];
   salvarBancadas();
@@ -430,7 +430,7 @@ function excluirBancada() {
   const sel = document.getElementById("bancadaExistente").value ||
     document.getElementById("bancadaNome").value.trim();
   if (!sel || !BANCADAS[sel]) return setStatus("Selecione uma bancada salva para excluir.", true);
-  if (!confirm(`Excluir a bancada fictícia "${sel}"?`)) return;
+  if (!confirm(`Excluir a bancada fixa "${sel}"?`)) return;
   delete BANCADAS[sel];
   salvarBancadas();
   selecaoBancada = new Set();
@@ -507,6 +507,47 @@ function renderTabela() {
   const prefixo = bancada ? `Bancada "${bancada}": ` : "";
   document.getElementById("resultCount").textContent =
     `${prefixo}${linhas.length} registros • ${linhas.reduce((s, d) => s + d.total, 0)} projetos`;
+  renderGrafico(linhas);
+}
+
+// Paleta (tons do tema teal + cores de apoio) para as 10 fatias da pizza.
+const CORES_PIZZA = [
+  "#1fa5a5", "#26c9c9", "#00A859", "#3ad97d", "#6eaaff",
+  "#f0c040", "#f08a40", "#f05454", "#b06ef0", "#9aa7ab",
+];
+let chartPizza = null;
+
+/** Desenha a pizza com o Top 10 (por projetos) dos dados atualmente filtrados. */
+function renderGrafico(linhas) {
+  if (typeof Chart === "undefined") return; // lib não carregada
+  const top = [...linhas].sort((a, b) => b.total - a.total).filter((d) => d.total > 0).slice(0, 10);
+  const vazio = document.getElementById("graficoVazio");
+  const wrap = document.querySelector(".grafico-wrap");
+  if (top.length === 0) {
+    if (chartPizza) { chartPizza.destroy(); chartPizza = null; }
+    wrap.style.display = "none"; vazio.hidden = false; return;
+  }
+  wrap.style.display = ""; vazio.hidden = true;
+
+  // Inclui a legislatura no rótulo quando há mais de uma nos dados filtrados.
+  const multiLeg = new Set(linhas.map((d) => d.legislatura)).size > 1;
+  const rotulo = (d) => d.nome + (multiLeg ? ` (${d.legislatura}ª)` : "");
+  const labels = top.map(rotulo);
+  const valores = top.map((d) => d.total);
+
+  if (chartPizza) chartPizza.destroy();
+  chartPizza = new Chart(document.getElementById("grafico"), {
+    type: "pie",
+    data: { labels, datasets: [{ data: valores, backgroundColor: CORES_PIZZA, borderColor: "#0e1c1f", borderWidth: 1 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom", labels: { color: "#e8ecec", font: { size: 11 }, boxWidth: 12 } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed} projeto(s)` } },
+      },
+    },
+  });
 }
 
 function alternarProjetos(tr, d) {
@@ -544,7 +585,7 @@ function exportarXlsx() {
   const ranking = DADOS.map((d) => ({
     Deputado: d.nome, Partido: d.partido, UF: d.uf,
     "Condição": d.condicao || "—",
-    "Bancada(s) fictícia(s)": banc(d.depId),
+    "Bancada(s) fixa(s)": banc(d.depId),
     Legislatura: LEGISLATURAS[d.legislatura].rotulo,
     "Projetos convertidos em lei": d.total,
     Leg: d.legislatura, idDeputado: d.depId,
@@ -553,7 +594,7 @@ function exportarXlsx() {
   for (const d of DADOS) for (const p of d.projetos) {
     projetos.push({
       Deputado: d.nome, Partido: d.partido, UF: d.uf,
-      "Bancada(s) fictícia(s)": banc(d.depId),
+      "Bancada(s) fixa(s)": banc(d.depId),
       Legislatura: LEGISLATURAS[d.legislatura].rotulo,
       Tipo: p.tipo, Numero: p.numero, Ano: p.ano,
       "Data apresentacao": (p.dataApresentacao || "").slice(0, 10),
@@ -649,12 +690,12 @@ async function exportarSqlite() {
     db.run(`
       CREATE TABLE ranking (
         id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT, condicao TEXT,
-        legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER, bancada_ficticia TEXT
+        legislatura TEXT, legislatura_desc TEXT, projetos_em_lei INTEGER, bancada_fixa TEXT
       );
       CREATE TABLE projetos (
         id_proposicao INTEGER, id_deputado INTEGER, deputado TEXT, partido TEXT, uf TEXT,
         legislatura TEXT, legislatura_desc TEXT, tipo TEXT, numero INTEGER, ano INTEGER,
-        data_apresentacao TEXT, ementa TEXT, link TEXT, bancada_ficticia TEXT
+        data_apresentacao TEXT, ementa TEXT, link TEXT, bancada_fixa TEXT
       );`);
 
     const bpd = bancadasPorDep();
@@ -870,7 +911,7 @@ function configurarEventos() {
     e.target.value = "";
   });
 
-  // Bancadas fictícias
+  // Bancadas fixas
   document.getElementById("btnSalvarBancada").addEventListener("click", salvarBancadaAtual);
   document.getElementById("btnExcluirBancada").addEventListener("click", excluirBancada);
   document.getElementById("btnLimparSelecao").addEventListener("click", () => {

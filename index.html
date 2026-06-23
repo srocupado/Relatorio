@@ -7,13 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="vendor/sql-wasm.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
 </head>
 <body>
   <header>
-    <h1>Deputados com projetos convertidos em lei <span class="versao">v7 · bancada fictícia</span></h1>
+    <h1>Deputados com projetos convertidos em lei <span class="versao">v8 · gráfico top 10</span></h1>
     <p class="sub">
       Levantamento com os
       <a href="https://dadosabertos.camara.leg.br/" target="_blank" rel="noopener">Dados Abertos da Câmara</a>
@@ -136,14 +137,14 @@
       <h2>4. Resultados</h2>
 
       <details class="bancada-box" id="bancadaBox">
-        <summary>🏛️ Bancada fictícia (partido personalizado)</summary>
+        <summary>🏛️ Bancada fixa (partido personalizado)</summary>
         <p class="hint">
           Monte uma bancada fixa escolhendo os deputados; a análise passa a ignorar as trocas de
           partido. As bancadas ficam salvas no navegador e aparecem no filtro "bancadas" e nos
           arquivos exportados.
         </p>
         <div class="bancada-controls">
-          <input type="text" id="bancadaNome" placeholder="Nome da bancada fictícia" />
+          <input type="text" id="bancadaNome" placeholder="Nome da bancada fixa" />
           <button id="btnSalvarBancada">💾 Salvar / atualizar</button>
           <select id="bancadaExistente"><option value="">— carregar bancada salva —</option></select>
           <button id="btnExcluirBancada">🗑 Excluir bancada</button>
@@ -191,6 +192,12 @@
         </thead>
         <tbody></tbody>
       </table>
+
+      <div class="grafico-secao">
+        <h3 id="graficoTitulo">Top 10 — projetos convertidos em lei (dados filtrados)</h3>
+        <div class="grafico-wrap"><canvas id="grafico"></canvas></div>
+        <p class="hint" id="graficoVazio" hidden>Sem dados com ≥ 1 projeto para o filtro atual.</p>
+      </div>
     </section>
   </main>
 
@@ -203,6 +210,6 @@
     </p>
   </footer>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

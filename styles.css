@@ -209,5 +209,9 @@ td.total { font-weight: 700; text-align: center; color: var(--verde-claro); }
 .projetos-list .pj-ementa { color: var(--text-dim); font-size: 0.85rem; }
 .projetos-list small { color: var(--text-dim); }
 
+.grafico-secao { margin-top: 24px; border-top: 1px solid var(--borda); padding-top: 16px; }
+.grafico-secao h3 { color: var(--accent-light); font-size: 1.05rem; margin: 0 0 12px; }
+.grafico-wrap { position: relative; max-width: 620px; height: 420px; margin: 0 auto; }
+
 footer { max-width: 1200px; margin: 0 auto; padding: 0 22px 40px; }
 footer p { font-size: 0.8rem; color: var(--text-dim); max-width: 80ch; }
