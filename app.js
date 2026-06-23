@@ -19,6 +19,7 @@ const API = "https://dadosabertos.camara.leg.br/api/v2";
 const ID_SITUACAO_LEI = "1140"; // "Transformado em Norma Jurídica" (no ultimoStatus do arquivo)
 const CONCORRENCIA = 6;
 let ARQUIVOS_SELECIONADOS = []; // File[]
+const CACHE_HISTORICO = new Map(); // depId -> histórico (reaproveitado entre reprocessamentos)
 
 // Faixas de data de apresentação + anos de arquivo a baixar por legislatura.
 const LEGISLATURAS = {
@@ -44,8 +45,8 @@ let ordemAtual = { coluna: "total", asc: false };
 // ---- Helpers de rede --------------------------------------------------------
 
 /** fetch com retry/backoff em erros transitórios (429 / 5xx / rede). */
-async function fetchComRetry(url, tentativas = 5) {
-  let espera = 1000;
+async function fetchComRetry(url, tentativas = 5, esperaInicial = 1000) {
+  let espera = esperaInicial;
   for (let i = 0; i < tentativas; i++) {
     try {
       const resp = await fetch(url, { headers: { Accept: "application/json" } });
@@ -154,10 +155,11 @@ function filtrarProjetosLei(arquivo, tipos) {
   return leis;
 }
 
-/** Busca o histórico do deputado (condição eleitoral por legislatura). */
+/** Busca o histórico do deputado (condição eleitoral por legislatura).
+ * Retry curto (falha vira "—" rápido, sem travar a coleta em redes instáveis). */
 async function fetchHistorico(idDeputado) {
   // OBS: o endpoint /historico NÃO aceita o parâmetro 'itens' (retorna 400).
-  const resp = await fetchComRetry(`${API}/deputados/${idDeputado}/historico`);
+  const resp = await fetchComRetry(`${API}/deputados/${idDeputado}/historico`, 3, 500);
   const json = await resp.json();
   return json.dados || [];
 }
@@ -256,9 +258,12 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
       [...idsCondicao],
       CONCORRENCIA_API,
       async (depId) => {
-        let hist;
-        try { hist = await fetchHistorico(depId); }
-        catch (e) { falhasCondicao++; return; } // falha não aborta; condição fica "—"
+        // Usa o cache da sessão: reprocessar só busca os que ainda faltam.
+        if (!CACHE_HISTORICO.has(depId)) {
+          try { CACHE_HISTORICO.set(depId, await fetchHistorico(depId)); }
+          catch (e) { falhasCondicao++; return; } // falha não aborta; condição fica "—"
+        }
+        const hist = CACHE_HISTORICO.get(depId);
         for (const leg of legsSelecionadas) {
           condicaoPorChave.set(`${depId}|${leg}`, condicaoDaLegislatura(hist, leg));
         }
