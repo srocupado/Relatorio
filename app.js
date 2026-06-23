@@ -155,18 +155,19 @@ function classificarPorLegislatura(dataApresentacao) {
  * Tolerante a falhas: nunca lança; devolve { deputados, completo }. */
 async function fetchDeputados(idLegislatura, onProgresso) {
   const deputados = [];
+  const ITENS = 1000; // roster inteiro em 1 (ou poucas) chamada(s) — menos chance de falha
   let pagina = 1, total = 0, completo = true;
   while (true) {
-    const url = `${API}/deputados?idLegislatura=${idLegislatura}&ordem=ASC&ordenarPor=nome&itens=100&pagina=${pagina}`;
+    const url = `${API}/deputados?idLegislatura=${idLegislatura}&ordem=ASC&ordenarPor=nome&itens=${ITENS}&pagina=${pagina}`;
     let resp, json;
-    try { resp = await fetchComRetry(url, 5, 800); json = await resp.json(); }
+    try { resp = await fetchComRetry(url, 6, 800); json = await resp.json(); }
     catch (e) { completo = false; break; }
     for (const d of json.dados) {
       deputados.push({ id: d.id, nome: d.nome, partido: d.siglaPartido || "", uf: d.siglaUf || "" });
     }
     total = parseInt(resp.headers.get("x-total-count") || "0", 10);
     if (onProgresso) onProgresso(deputados.length, total || deputados.length);
-    if (pagina * 100 >= total || json.dados.length === 0) break;
+    if (pagina * ITENS >= total || json.dados.length === 0) break;
     pagina++;
   }
   return { deputados, completo };
@@ -236,24 +237,9 @@ async function fetchAutoresDeputados(idProposicao) {
 
 /** Orquestra toda a coleta e monta DADOS. */
 async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
-  // 1. Ler os arquivos locais e filtrar os projetos que viraram lei.
-  const leisPorId = new Map();
-  for (let i = 0; i < arquivos.length; i++) {
-    const file = arquivos[i];
-    setFase(`Lendo "${file.name}" (arquivo ${i + 1}/${arquivos.length})...`);
-    const arquivo = await lerJsonLocalComProgresso(file, (rec, tot) => setProgressoBytes(rec, tot));
-    setFase(`Filtrando projetos de "${file.name}"...`);
-    for (const lei of filtrarProjetosLei(arquivo, tipos)) {
-      const leg = classificarPorLegislatura(lei.dataApresentacao);
-      if (leg && legsSelecionadas.includes(leg) && !leisPorId.has(lei.id)) {
-        leisPorId.set(lei.id, { ...lei, leg });
-      }
-    }
-    setProgresso(i + 1, arquivos.length);
-  }
-
-  // 2. Buscar os deputados de cada legislatura (nome/partido/UF + para mostrar zeros).
-  // Usa cache persistente por legislatura; tolerante a falhas (não aborta a coleta).
+  // 1. Buscar os deputados de cada legislatura (nome/partido/UF + para mostrar zeros).
+  // Feito ANTES de ler os arquivos grandes (evita competir com a memória do parse).
+  // Roster inteiro em 1 chamada (itens=1000), com cache e tolerante a falhas.
   const rosterPorLeg = {};
   const infoDep = new Map();
   let falhasRoster = 0;
@@ -271,6 +257,22 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
     }
     rosterPorLeg[leg] = new Set(lista.map((d) => d.id));
     for (const d of lista) if (!infoDep.has(d.id)) infoDep.set(d.id, d);
+  }
+
+  // 2. Ler os arquivos locais e filtrar os projetos que viraram lei.
+  const leisPorId = new Map();
+  for (let i = 0; i < arquivos.length; i++) {
+    const file = arquivos[i];
+    setFase(`Lendo "${file.name}" (arquivo ${i + 1}/${arquivos.length})...`);
+    const arquivo = await lerJsonLocalComProgresso(file, (rec, tot) => setProgressoBytes(rec, tot));
+    setFase(`Filtrando projetos de "${file.name}"...`);
+    for (const lei of filtrarProjetosLei(arquivo, tipos)) {
+      const leg = classificarPorLegislatura(lei.dataApresentacao);
+      if (leg && legsSelecionadas.includes(leg) && !leisPorId.has(lei.id)) {
+        leisPorId.set(lei.id, { ...lei, leg });
+      }
+    }
+    setProgresso(i + 1, arquivos.length);
   }
 
   const leis = [...leisPorId.values()];
