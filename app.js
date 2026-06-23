@@ -66,6 +66,7 @@ async function fetchComRetry(url, tentativas = 5) {
 }
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+const CONCORRENCIA_API = 4; // mais suave para redes corporativas em etapas com muitas chamadas
 
 /** Lê um arquivo local (File) como texto, mostrando o progresso de leitura, e faz JSON.parse. */
 function lerJsonLocalComProgresso(file, onBytes) {
@@ -227,11 +228,14 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   // 3. Buscar autores de cada lei (credita todos os autores deputados).
   setFase(`Buscando autores de ${leis.length} projetos convertidos em lei...`);
   const buckets = new Map(); // `${depId}|${leg}` -> { info, projetos: [] }
+  let falhasAutores = 0;
   await poolDeTarefas(
     leis,
-    CONCORRENCIA,
+    CONCORRENCIA_API,
     async (lei) => {
-      const autores = await fetchAutoresDeputados(lei.id);
+      let autores;
+      try { autores = await fetchAutoresDeputados(lei.id); }
+      catch (e) { falhasAutores++; return; } // não aborta tudo por uma falha
       for (const a of autores) {
         const chave = `${a.id}|${lei.leg}`;
         if (!buckets.has(chave)) buckets.set(chave, { depId: a.id, nome: a.nome, projetos: [] });
@@ -243,15 +247,18 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
 
   // 3.5. (Opcional) Buscar a condição eleitoral (titular/suplente) por deputado.
   const condicaoPorChave = new Map(); // `${depId}|${leg}` -> "Titular"/"Suplente"/"Efetivado"/"—"
+  let falhasCondicao = 0;
   if (usarCondicao) {
     const idsCondicao = new Set(infoDep.keys());
     for (const k of buckets.keys()) idsCondicao.add(parseInt(k.split("|")[0], 10));
     setFase("Buscando condição (titular/suplente) dos deputados...");
     await poolDeTarefas(
       [...idsCondicao],
-      CONCORRENCIA,
+      CONCORRENCIA_API,
       async (depId) => {
-        const hist = await fetchHistorico(depId);
+        let hist;
+        try { hist = await fetchHistorico(depId); }
+        catch (e) { falhasCondicao++; return; } // falha não aborta; condição fica "—"
         for (const leg of legsSelecionadas) {
           condicaoPorChave.set(`${depId}|${leg}`, condicaoDaLegislatura(hist, leg));
         }
@@ -281,8 +288,11 @@ async function coletar(legsSelecionadas, tipos, arquivos, usarCondicao) {
   }
 
   mostrarProgresso(false);
-  setStatus(`Coleta concluída: ${leis.length} projetos convertidos em lei • ` +
-    `${DADOS.length} registros (deputado × legislatura). Tipos: ${tipos.join(", ")}.`);
+  let msg = `Coleta concluída: ${leis.length} projetos convertidos em lei • ` +
+    `${DADOS.length} registros (deputado × legislatura). Tipos: ${tipos.join(", ")}.`;
+  if (falhasAutores) msg += ` ⚠️ ${falhasAutores} projeto(s) sem autores (falha de rede).`;
+  if (falhasCondicao) msg += ` ⚠️ ${falhasCondicao} deputado(s) com condição indefinida (falha de rede) — clique em Processar de novo se quiser completar.`;
+  setStatus(msg);
 }
 
 // ---- Renderização da tabela -------------------------------------------------
